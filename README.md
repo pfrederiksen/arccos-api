@@ -64,7 +64,7 @@ arccos rounds --after 2025-01-01      # filter by date
 arccos rounds --json                  # raw JSON
 
 # Round detail
-arccos round 26685289                 # hole-by-hole breakdown
+arccos round 18294051                 # hole-by-hole breakdown
 
 # Handicap
 arccos handicap                       # category breakdown
@@ -92,35 +92,40 @@ arccos export -f ndjson               # newline-delimited JSON
 ```
 $ arccos clubs
             Smart Club Distances
-╭──────┬────────────────┬───────┬─────────┬──────────┬───────╮
-│ Club │ Model          │ Smart │ Longest │    Range │ Shots │
-├──────┼────────────────┼───────┼─────────┼──────────┼───────┤
-│ Dr   │ PING G425 SFT  │  244y │    285y │ 241–259y │   517 │
-│ 3w   │ PING G440 SFT  │  203y │    223y │ 194–210y │    71 │
-│ 5w   │ PING G425      │  170y │    206y │ 164–177y │   285 │
-│ 4i   │ Callaway Elyte │  141y │    171y │ 137–151y │    35 │
-│ 9i   │ Callaway Elyte │  125y │    149y │ 117–128y │    43 │
-│ Pw   │ Callaway Elyte │   98y │    113y │  95–101y │    25 │
-│ Aw   │ Callaway Elyte │   87y │    104y │   87–91y │    49 │
-│ 56   │ Callaway Opus  │   69y │    186y │   67–71y │   644 │
-╰──────┴────────────────┴───────┴─────────┴──────────┴───────╯
+╭──────┬──────────────────┬───────┬─────────┬──────────┬───────╮
+│ Club │ Model            │ Smart │ Longest │    Range │ Shots │
+├──────┼──────────────────┼───────┼─────────┼──────────┼───────┤
+│ Dr   │ TaylorMade Qi10  │  252y │    291y │ 245–263y │   312 │
+│ 3w   │ TaylorMade Qi10  │  228y │    248y │ 220–235y │    87 │
+│ 5w   │ Callaway Paradym │  208y │    231y │ 200–215y │   143 │
+│ 4h   │ Titleist T200    │  195y │    214y │ 188–202y │    61 │
+│ 6i   │ Titleist T150    │  172y │    190y │ 165–179y │    94 │
+│ 7i   │ Titleist T150    │  160y │    178y │ 153–167y │   118 │
+│ 8i   │ Titleist T150    │  148y │    165y │ 141–155y │   105 │
+│ 9i   │ Titleist T150    │  136y │    152y │ 130–142y │    97 │
+│ Pw   │ Titleist T150    │  124y │    140y │ 118–130y │    82 │
+│ 50   │ Vokey SM10       │  108y │    125y │ 102–114y │    76 │
+│ 54   │ Vokey SM10       │   88y │    105y │  82–94y  │   201 │
+│ 58   │ Vokey SM10       │   64y │     88y │  58–70y  │   168 │
+╰──────┴──────────────────┴───────┴─────────┴──────────┴───────╯
 
-$ arccos round 26685289
-╭─── Round 26685289 ───╮
-│ Date:   2026-03-08   │
-│ Course: Las Vegas GC │
-│ Score:  85 (+13)     │
-│ Holes:  18           │
-╰──────────────────────╯
+$ arccos round 18294051
+╭─── Round 18294051 ────╮
+│ Date:   2025-09-14    │
+│ Course: Torrey Pines  │
+│ Score:  79 (+7)       │
+│ Holes:  18            │
+╰───────────────────────╯
             Hole-by-Hole
 ╭──────┬───────┬───────┬─────┬─────╮
 │ Hole │ Score │ Putts │ FIR │ GIR │
 ├──────┼───────┼───────┼─────┼─────┤
-│    1 │     5 │     2 │  T  │  F  │
-│    2 │     5 │     2 │  F  │  T  │
+│    1 │     4 │     2 │  T  │  T  │
+│    2 │     5 │     2 │  F  │  F  │
+│    3 │     3 │     1 │     │  T  │
 │  ... │   ... │   ... │ ... │ ... │
 ├──────┼───────┼───────┼─────┼─────┤
-│  Tot │    85 │    34 │     │     │
+│  Tot │    79 │    31 │     │     │
 ╰──────┴───────┴───────┴─────┴─────╯
 
 $ arccos handicap
@@ -128,23 +133,24 @@ $ arccos handicap
 ╭────────────┬───────╮
 │ Category   │   HCP │
 ├────────────┼───────┤
-│ Overall    │ -17.3 │
-│ Driving    │ -20.4 │
-│ Approach   │ -25.6 │
-│ Short Game │ -21.2 │
-│ Putting    │  -8.5 │
+│ Overall    │ -12.4 │
+│ Driving    │ -15.1 │
+│ Approach   │ -18.7 │
+│ Short Game │ -14.3 │
+│ Putting    │  -6.2 │
 ╰────────────┴───────╯
 
 $ arccos pace -n 10
-Pace of Play — 10 rounds across 9 courses   Overall avg: 4h 39m
+Pace of Play — 10 rounds across 6 courses   Overall avg: 4h 22m
 
                   By Course (slowest first)
 ╭────┬──────────┬───────────────────────┬────────╮
 │    │ Avg Time │ Course                │ Rounds │
 ├────┼──────────┼───────────────────────┼────────┤
-│ 🔴 │   5h 05m │ Las Vegas GC          │      2 │
-│ 🟡 │   5h 00m │ Siena GC              │      1 │
-│ 🟢 │   3h 27m │ Furnace Creek Ranch   │      1 │
+│ 🔴 │   5h 10m │ Bethpage Black        │      2 │
+│ 🟡 │   4h 45m │ Torrey Pines          │      3 │
+│ 🟢 │   3h 50m │ Bandon Dunes          │      2 │
+│ 🟢 │   3h 35m │ Chambers Bay          │      1 │
 ╰────┴──────────┴───────────────────────┴────────╯
 ```
 
@@ -247,19 +253,19 @@ All data calls go to `https://api.arccosgolf.com` with `Authorization: Bearer <t
 **Round** (from `GET /users/{id}/rounds/{roundId}`):
 ```json
 {
-  "roundId": 26685289,
-  "courseId": 10769,
-  "courseName": "Las Vegas GC",
-  "startTime": "2026-03-08T19:17:28.000000Z",
-  "endTime": "2026-03-09T00:46:31.000000Z",
-  "noOfShots": 85,
+  "roundId": 18294051,
+  "courseId": 12450,
+  "courseName": "Torrey Pines",
+  "startTime": "2025-09-14T15:30:00.000000Z",
+  "endTime": "2025-09-14T20:15:00.000000Z",
+  "noOfShots": 79,
   "noOfHoles": 18,
-  "overUnder": 13,
+  "overUnder": 7,
   "holes": [
     {
-      "holeId": 1, "noOfShots": 5, "putts": 2,
-      "isGir": "F", "isFairWay": "T",
-      "shots": [{"clubId": 1, "clubType": 1, "distance": 237.0}]
+      "holeId": 1, "noOfShots": 4, "putts": 2,
+      "isGir": "T", "isFairWay": "T",
+      "shots": [{"clubId": 1, "clubType": 1, "distance": 255.0}]
     }
   ]
 }
@@ -269,10 +275,10 @@ All data calls go to `https://api.arccosgolf.com` with `Authorization: Bearer <t
 ```json
 {
   "clubId": 1,
-  "smartDistance": {"distance": 243.9, "unit": "yd"},
-  "longest": {"distance": 285.4, "unit": "yd"},
-  "range": {"low": 241.1, "high": 259.1, "unit": "yd"},
-  "usage": {"count": 517}
+  "smartDistance": {"distance": 252.3, "unit": "yd"},
+  "longest": {"distance": 291.0, "unit": "yd"},
+  "range": {"low": 245.0, "high": 263.0, "unit": "yd"},
+  "usage": {"count": 312}
 }
 ```
 
@@ -280,7 +286,7 @@ All data calls go to `https://api.arccosgolf.com` with `Authorization: Bearer <t
 ```json
 {
   "clubId": 1, "clubType": 1,
-  "clubMakeOther": "PING", "clubModelOther": "G425 SFT",
+  "clubMakeOther": "TaylorMade", "clubModelOther": "Qi10",
   "isDeleted": "F"
 }
 ```
