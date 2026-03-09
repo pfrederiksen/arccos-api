@@ -7,15 +7,19 @@ Thanks for your interest in improving this library.
 ```bash
 git clone https://github.com/pfrederiksen/arccos-api.git
 cd arccos-api
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
 ## Running Tests
 
 ```bash
-pytest
-pytest --cov=arccos          # with coverage
+pytest                       # runs with coverage (configured in pyproject.toml)
+pytest -k "test_login"       # run specific tests
 ```
+
+Coverage is enforced at 80% minimum. The HTML report is generated at `htmlcov/index.html`.
 
 Tests are fully mocked — no real Arccos account needed.
 

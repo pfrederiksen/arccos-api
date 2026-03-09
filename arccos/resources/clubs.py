@@ -6,9 +6,44 @@ Endpoint prefix: /v4/clubs/user/{userId}
 
 from __future__ import annotations
 
-from typing import Optional
-
 from .._http import HttpClient
+
+# Standard Arccos clubType IDs → short display names.
+# Verified against the Arccos Dashboard and bag API responses.
+CLUB_TYPE_NAMES: dict[int, str] = {
+    1: "Dr",
+    2: "3w",
+    3: "5w",
+    4: "7w",
+    5: "4i",
+    6: "5i",
+    7: "6i",
+    8: "7i",
+    9: "8i",
+    10: "9i",
+    11: "Pw",
+    12: "Putter",
+    13: "Sw",
+    14: "Lw",
+    15: "Putter",
+    17: "3h",
+    18: "4h",
+    19: "5h",
+    20: "6h",
+    21: "7h",
+    43: "Aw",
+    44: "2i",
+    45: "2h",
+    46: "Di",
+    47: "Gw",
+    48: "52",
+    49: "54",
+    50: "56",
+    51: "58",
+    52: "60",
+    53: "56",
+    54: "3i",
+}
 
 
 class ClubsResource:
@@ -30,9 +65,9 @@ class ClubsResource:
 
     def smart_distances(
         self,
-        num_shots: Optional[int] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        num_shots: int | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> list[dict]:
         """
         Fetch smart club distance recommendations.
@@ -86,7 +121,7 @@ class ClubsResource:
         club_id: str,
         limit: int = 100,
         offset: int = 0,
-        round_id: Optional[str] = None,
+        round_id: str | None = None,
     ) -> list[dict]:
         """
         Fetch individual shot records for a specific club.

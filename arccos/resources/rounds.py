@@ -6,8 +6,7 @@ Endpoint prefix: /users/{userId}/rounds
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime
 
 from .._http import HttpClient
 
@@ -39,9 +38,9 @@ class RoundsResource:
         limit: int = 200,
         offset: int = 0,
         round_type: str = "flagship",
-        before_date: Optional[str] = None,
-        after_date: Optional[str] = None,
-        course_id: Optional[int] = None,
+        before_date: str | None = None,
+        after_date: str | None = None,
+        course_id: int | None = None,
     ) -> list[dict]:
         """
         Fetch all rounds for the user.

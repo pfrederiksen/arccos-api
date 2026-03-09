@@ -9,13 +9,12 @@ from __future__ import annotations
 import json
 import os
 import sys
-from pathlib import Path
 
 import click
-from rich.console import Console
-from rich.table import Table
 from rich import box
+from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 
 console = Console()
@@ -54,10 +53,10 @@ def _output_json(data):
 
 def _flag(minutes: int) -> str:
     if minutes > 300:
-        return "🔴"
+        return "\U0001f534"
     if minutes > 270:
-        return "🟡"
-    return "🟢"
+        return "\U0001f7e1"
+    return "\U0001f7e2"
 
 
 # ---------------------------------------------------------------------------
@@ -75,10 +74,14 @@ def cli():
     Quick start:
       arccos login                 Authenticate and save credentials
       arccos rounds                Your recent rounds
+      arccos round <id>            Hole-by-hole round detail
       arccos handicap              Current handicap index
       arccos clubs                 Smart club distances
+      arccos courses               Courses you've played
       arccos pace                  Pace of play by course
       arccos stats                 Strokes gained analysis
+      arccos export                Export rounds to JSON/CSV
+      arccos logout                Clear cached credentials
 
     \b
     Credentials are cached in ~/.arccos_creds.json after first login.
@@ -91,23 +94,25 @@ def cli():
 # ---------------------------------------------------------------------------
 
 @cli.command()
-@click.option("--email", envvar="ARCCOS_EMAIL", prompt="Arccos email", help="Your Arccos account email.")
-@click.option("--password", envvar="ARCCOS_PASSWORD", prompt="Password", hide_input=True, help="Your Arccos password.")
+@click.option("--email", envvar="ARCCOS_EMAIL", prompt="Arccos email",
+              help="Your Arccos account email.")
+@click.option("--password", envvar="ARCCOS_PASSWORD", prompt="Password",
+              hide_input=True, help="Your Arccos password.")
 def login(email: str, password: str):
     """Authenticate and save credentials to ~/.arccos_creds.json."""
     from arccos import ArccosClient
     from arccos.exceptions import ArccosAuthError
 
-    with console.status("Logging in…"):
+    with console.status("Logging in\u2026"):
         try:
             client = ArccosClient(email=email, password=password)
         except ArccosAuthError as e:
             err_console.print(f"[red]Login failed:[/red] {e}")
             sys.exit(1)
 
-    console.print(f"[green]✓[/green] Logged in as [bold]{client.email}[/bold]")
+    console.print(f"[green]\u2713[/green] Logged in as [bold]{client.email}[/bold]")
     console.print(f"  User ID: [dim]{client.user_id}[/dim]")
-    console.print(f"  Credentials cached at [dim]~/.arccos_creds.json[/dim]")
+    console.print("  Credentials cached at [dim]~/.arccos_creds.json[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +120,8 @@ def login(email: str, password: str):
 # ---------------------------------------------------------------------------
 
 @cli.command()
-@click.option("--limit",  "-n", default=20,       show_default=True, help="Number of rounds to show.")
+@click.option("--limit", "-n", default=20, show_default=True,
+              help="Number of rounds to show.")
 @click.option("--offset", "-o", default=0,         show_default=True, help="Pagination offset.")
 @click.option("--after",  "-a", default=None,      help="Show rounds after date (YYYY-MM-DD).")
 @click.option("--before", "-b", default=None,      help="Show rounds before date (YYYY-MM-DD).")
@@ -124,7 +130,7 @@ def rounds(limit: int, offset: int, after: str, before: str, as_json: bool):
     """List your recent golf rounds."""
     client = _get_client()
 
-    with console.status("Fetching rounds…"):
+    with console.status("Fetching rounds\u2026"):
         data = client.rounds.list(
             limit=limit, offset=offset,
             after_date=after, before_date=before,
@@ -152,10 +158,10 @@ def rounds(limit: int, offset: int, after: str, before: str, as_json: bool):
 
     for r in data:
         date  = r.get("startTime", "")[:10]
-        score = str(r.get("noOfShots", "—"))
-        holes = str(r.get("noOfHoles", "—"))
-        cid   = str(r.get("courseId", "—"))
-        rid   = str(r.get("roundId", "—"))
+        score = str(r.get("noOfShots", "\u2014"))
+        holes = str(r.get("noOfHoles", "\u2014"))
+        cid   = str(r.get("courseId", "\u2014"))
+        rid   = str(r.get("roundId", "\u2014"))
         table.add_row(date, score, holes, cid, rid)
 
     console.print(table)
@@ -167,36 +173,67 @@ def rounds(limit: int, offset: int, after: str, before: str, as_json: bool):
 
 @cli.command()
 @click.option("--history", "-H", is_flag=True,    help="Show handicap history instead of current.")
-@click.option("--rounds",  "-n", default=20,       show_default=True, help="Rounds to include in history.")
+@click.option("--rounds", "-n", default=20, show_default=True,
+              help="Rounds to include in history.")
 @click.option("--json",   "as_json", is_flag=True, help="Output raw JSON.")
 def handicap(history: bool, rounds: int, as_json: bool):
     """Show your current handicap index (or revision history)."""
     client = _get_client()
 
-    with console.status("Fetching handicap…"):
-        if history:
-            data = client.handicap.history(rounds=rounds)
-        else:
-            data = client.handicap.current()
+    with console.status("Fetching handicap\u2026"):
+        data = (
+            client.handicap.history(rounds=rounds)
+            if history
+            else client.handicap.current()
+        )
 
     if as_json:
         _output_json(data)
         return
 
     if not history:
-        console.print(Panel(
-            Text(str(data), justify="center"),
-            title="[bold cyan]Handicap Index[/bold cyan]",
-            expand=False,
-        ))
+        # The API returns SGA-style handicap breakdown
+        HCP_LABELS = {
+            "userHcp": "Overall",
+            "driveHcp": "Driving",
+            "approachHcp": "Approach",
+            "chipHcp": "Short Game",
+            "sandHcp": "Sand",
+            "puttHcp": "Putting",
+        }
+        if isinstance(data, dict) and "userHcp" in data:
+            table = Table(
+                box=box.ROUNDED,
+                header_style="bold cyan",
+                title="[bold]Handicap Breakdown[/bold]",
+            )
+            table.add_column("Category", style="white bold")
+            table.add_column("HCP", justify="right", style="bold")
+            for key, label in HCP_LABELS.items():
+                val = data.get(key)
+                if val is None:
+                    continue
+                # Arccos uses negative = better (lower handicap)
+                color = "green" if val < -15 else "yellow" if val < -10 else "red"
+                table.add_row(label, f"[{color}]{val:.1f}[/{color}]")
+            console.print(table)
+        else:
+            console.print(Panel(
+                Text(str(data), justify="center"),
+                title="[bold cyan]Handicap Index[/bold cyan]",
+                expand=False,
+            ))
     else:
         if not data:
             console.print("[dim]No handicap history found.[/dim]")
             return
-        table = Table(box=box.ROUNDED, header_style="bold cyan", title="[bold]Handicap History[/bold]")
+        table = Table(
+            box=box.ROUNDED, header_style="bold cyan",
+            title="[bold]Handicap History[/bold]",
+        )
         first = data[0] if isinstance(data, list) else data
         if isinstance(first, dict):
-            for key in first.keys():
+            for key in first:
                 table.add_column(key)
             for row in data:
                 table.add_row(*[str(v) for v in row.values()])
@@ -220,42 +257,94 @@ def clubs(after: str, before: str, min_shots: int, as_json: bool):
     """Show smart club distances (AI-filtered carry distances per club)."""
     client = _get_client()
 
-    with console.status("Fetching club distances…"):
+    with console.status("Fetching club distances\u2026"):
         data = client.clubs.smart_distances(
             num_shots=min_shots,
             start_date=after,
             end_date=before,
         )
+        # Fetch the user's bag to map clubId → clubType + make/model.
+        # The smart distances endpoint only returns clubId (bag slot).
+        bag_clubs: dict[int, dict] = {}
+        try:
+            profile = client._http.get(f"/users/{client.user_id}")
+            bag_id = profile.get("bagId")
+            if bag_id:
+                bag = client.clubs.bag(str(bag_id))
+                for bc in bag.get("clubs", []):
+                    bag_clubs[bc["clubId"]] = bc
+        except Exception:
+            pass
 
     if as_json:
         _output_json(data)
         return
 
+    # Filter out deleted clubs (old clubs replaced in the bag)
+    if bag_clubs:
+        data = [
+            c for c in data
+            if bag_clubs.get(c.get("clubId"), {}).get("isDeleted") != "T"
+        ]
+
     if not data:
         console.print("[dim]No club data found.[/dim]")
         return
+
+    from arccos.resources.clubs import CLUB_TYPE_NAMES
 
     table = Table(
         box=box.ROUNDED,
         header_style="bold cyan",
         title="[bold]Smart Club Distances[/bold]",
     )
-    table.add_column("Club",           style="white bold")
-    table.add_column("Smart Dist.",    justify="right", style="green bold")
-    table.add_column("Avg Dist.",      justify="right")
-    table.add_column("Shots Tracked",  justify="right", style="dim")
+    table.add_column("Club", style="white bold")
+    table.add_column("Model", style="dim")
+    table.add_column("Smart", justify="right", style="green bold")
+    table.add_column("Longest", justify="right")
+    table.add_column("Range", justify="right", style="dim")
+    table.add_column("Shots", justify="right", style="dim")
 
     for c in data:
-        name  = c.get("clubType") or c.get("name") or "?"
-        smart = c.get("smartDistance")
-        avg   = c.get("averageDistance")
-        shots = c.get("totalShots", "—")
-        table.add_row(
-            name,
-            f"{smart}y" if smart is not None else "—",
-            f"{avg}y"   if avg   is not None else "—",
-            str(shots),
-        )
+        # Resolve: clubId (bag slot) → clubType → display name
+        club_id = c.get("clubId")
+        bag_club = bag_clubs.get(club_id, {})
+        club_type = bag_club.get("clubType", club_id)
+        name = CLUB_TYPE_NAMES.get(club_type, f"#{club_id}")
+
+        # Make + model from bag data
+        make = bag_club.get("clubMakeOther", "")
+        model_name = bag_club.get("clubModelOther", "")
+        club_model = f"{make} {model_name}".strip() if make or model_name else ""
+
+        # Smart distance: may be a dict {"distance": X, "unit": "yd"}
+        smart_raw = c.get("smartDistance")
+        if isinstance(smart_raw, dict):
+            smart = f"{smart_raw['distance']:.0f}y"
+        elif smart_raw is not None:
+            smart = f"{smart_raw}y"
+        else:
+            smart = "\u2014"
+
+        # Longest
+        longest_raw = c.get("longest")
+        longest = f"{longest_raw['distance']:.0f}y" if isinstance(longest_raw, dict) else "\u2014"
+
+        # Range
+        range_raw = c.get("range")
+        if isinstance(range_raw, dict):
+            rng = (
+                f"{range_raw['low']:.0f}"
+                f"\u2013{range_raw['high']:.0f}y"
+            )
+        else:
+            rng = "\u2014"
+
+        # Shot count
+        usage = c.get("usage", {})
+        shots = str(usage.get("count", "\u2014")) if isinstance(usage, dict) else "\u2014"
+
+        table.add_row(name, club_model, smart, longest, rng, shots)
 
     console.print(table)
     console.print("[dim]Smart distance = average with outlier shots removed.[/dim]")
@@ -272,7 +361,7 @@ def pace(limit: int, as_json: bool):
     """Show pace of play (round duration) by course."""
     client = _get_client()
 
-    with console.status(f"Fetching up to {limit} rounds and course names…"):
+    with console.status(f"Fetching up to {limit} rounds and course names\u2026"):
         data = client.rounds.pace_of_play(
             rounds=client.rounds.list(limit=limit)
         )
@@ -284,9 +373,11 @@ def pace(limit: int, as_json: bool):
     n_rounds  = len(data["rounds"])
     n_courses = len(data["course_averages"])
 
+    avg = data['overall_avg_display']
     console.print(
-        f"\n[bold]Pace of Play[/bold] — [dim]{n_rounds} rounds across {n_courses} courses[/dim]"
-        f"   Overall avg: [bold cyan]{data['overall_avg_display']}[/bold cyan]\n"
+        f"\n[bold]Pace of Play[/bold] \u2014 "
+        f"[dim]{n_rounds} rounds across {n_courses} courses[/dim]"
+        f"   Overall avg: [bold cyan]{avg}[/bold cyan]\n"
     )
 
     table = Table(
@@ -317,11 +408,11 @@ def pace(limit: int, as_json: bool):
         flag = _flag(r["duration_minutes"])
         recent_table.add_row(
             flag, r["date"], r["duration_display"],
-            str(r["score"] or "—"), r["course"],
+            str(r["score"] or "\u2014"), r["course"],
         )
 
     console.print(recent_table)
-    console.print("[dim]🔴 >5h  🟡 4.5–5h  🟢 <4.5h[/dim]")
+    console.print("[dim]\U0001f534 >5h  \U0001f7e1 4.5\u20135h  \U0001f7e2 <4.5h[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +444,7 @@ def stats(round_ids: tuple, latest: bool, as_json: bool):
         sys.exit(1)
 
     if latest:
-        with console.status("Fetching latest round…"):
+        with console.status("Fetching latest round\u2026"):
             rd = client.rounds.list(limit=1)
         if not rd:
             err_console.print("[red]No rounds found.[/red]")
@@ -362,8 +453,15 @@ def stats(round_ids: tuple, latest: bool, as_json: bool):
         date = rd[0].get("startTime", "")[:10]
         console.print(f"Using round [dim]{round_ids[0]}[/dim] ({date})")
 
-    with console.status(f"Fetching strokes gained for {len(round_ids)} round(s)…"):
-        data = client.stats.strokes_gained(list(round_ids))
+    from arccos.exceptions import ArccosError
+
+    try:
+        with console.status(f"Fetching strokes gained for {len(round_ids)} round(s)\u2026"):
+            data = client.stats.strokes_gained(list(round_ids))
+    except ArccosError as e:
+        err_console.print(f"[red]SGA fetch failed:[/red] {e}")
+        err_console.print("[dim]The SGA endpoint may not be available for all accounts.[/dim]")
+        sys.exit(1)
 
     if as_json:
         _output_json(data)
@@ -406,6 +504,166 @@ def stats(round_ids: tuple, latest: bool, as_json: bool):
 
 
 # ---------------------------------------------------------------------------
+# courses
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.option("--json", "as_json", is_flag=True, help="Output raw JSON.")
+def courses(as_json: bool):
+    """List courses you have played."""
+    client = _get_client()
+
+    with console.status("Fetching courses\u2026"):
+        data = client.courses.played()
+
+    if as_json:
+        _output_json(data)
+        return
+
+    if not data:
+        console.print("[dim]No courses found.[/dim]")
+        return
+
+    table = Table(
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold cyan",
+        title=f"[bold]Courses Played[/bold] [dim]({len(data)} total)[/dim]",
+    )
+    table.add_column("Course Name",   style="white bold")
+    table.add_column("City")
+    table.add_column("State")
+    table.add_column("Rounds Played", justify="right")
+    table.add_column("Course ID",     justify="right", style="dim")
+
+    for c in data:
+        name   = c.get("courseName") or c.get("name") or "\u2014"
+        city   = c.get("city") or c.get("courseCity") or "\u2014"
+        state  = c.get("state") or c.get("courseState") or "\u2014"
+        played = str(c.get("roundsPlayed") or c.get("roundCount") or "\u2014")
+        cid    = str(c.get("courseId") or c.get("id") or "\u2014")
+        table.add_row(name, city, state, played, cid)
+
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# round
+# ---------------------------------------------------------------------------
+
+@cli.command(name="round")
+@click.argument("round_id", type=int)
+@click.option("--json", "as_json", is_flag=True, help="Output raw JSON.")
+def round_detail(round_id: int, as_json: bool):
+    """Show hole-by-hole detail for a single round."""
+    client = _get_client()
+
+    with console.status(f"Fetching round {round_id}\u2026"):
+        meta = client.rounds.get(round_id)
+
+    if as_json:
+        _output_json(meta)
+        return
+
+    # --- Summary panel ---
+    date = meta.get("startTime", "\u2014")[:10] if meta.get("startTime") else "\u2014"
+    score = meta.get("noOfShots", "\u2014")
+    course_name = meta.get("courseName") or str(meta.get("courseId", "\u2014"))
+    n_holes = meta.get("noOfHoles", "\u2014")
+    over_under = meta.get("overUnder")
+    ou_str = f" ({over_under:+d})" if over_under is not None else ""
+
+    summary = (
+        f"[bold]Date:[/bold]   {date}\n"
+        f"[bold]Course:[/bold] {course_name}\n"
+        f"[bold]Score:[/bold]  {score}{ou_str}\n"
+        f"[bold]Holes:[/bold]  {n_holes}"
+    )
+    console.print(Panel(
+        summary,
+        title=f"[bold cyan]Round {round_id}[/bold cyan]",
+        expand=False,
+    ))
+
+    # Holes are embedded in the round response
+    holes = meta.get("holes", [])
+    if not holes:
+        console.print("[dim]No hole data available.[/dim]")
+        return
+
+    table = Table(
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold cyan",
+        title="[bold]Hole-by-Hole[/bold]",
+    )
+    table.add_column("Hole", justify="right")
+    table.add_column("Score", justify="right", style="bold")
+    table.add_column("Putts", justify="right")
+    table.add_column("FIR", justify="center")
+    table.add_column("GIR", justify="center")
+
+    total_score = 0
+    total_putts = 0
+    for h in holes:
+        hole_num = str(h.get("holeId", "\u2014"))
+        sc = h.get("noOfShots")
+        putts = h.get("putts")
+        fir = h.get("isFairWay", "\u2014")
+        gir = h.get("isGir", "\u2014")
+
+        score_str = str(sc) if sc is not None else "\u2014"
+        putts_str = str(putts) if putts is not None else "\u2014"
+
+        if sc is not None:
+            total_score += sc
+        if putts is not None:
+            total_putts += putts
+
+        # Color FIR/GIR: T=green, F=red
+        if fir == "T":
+            fir = "[green]T[/green]"
+        elif fir == "F":
+            fir = "[red]F[/red]"
+        if gir == "T":
+            gir = "[green]T[/green]"
+        elif gir == "F":
+            gir = "[red]F[/red]"
+
+        table.add_row(hole_num, score_str, putts_str, fir, gir)
+
+    # Totals row
+    table.add_section()
+    table.add_row(
+        "[bold]Tot[/bold]",
+        f"[bold]{total_score}[/bold]",
+        f"[bold]{total_putts}[/bold]",
+        "", "",
+    )
+
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# logout
+# ---------------------------------------------------------------------------
+
+@cli.command()
+def logout():
+    """Clear cached credentials (~/.arccos_creds.json)."""
+    from arccos.auth import DEFAULT_CREDS_PATH
+
+    if DEFAULT_CREDS_PATH.exists():
+        DEFAULT_CREDS_PATH.unlink()
+        console.print(
+            "[green]\u2713[/green] Credentials removed from "
+            "[bold]~/.arccos_creds.json[/bold]"
+        )
+    else:
+        console.print("[dim]No cached credentials found.[/dim]")
+
+
+# ---------------------------------------------------------------------------
 # export
 # ---------------------------------------------------------------------------
 
@@ -418,20 +676,17 @@ def stats(round_ids: tuple, latest: bool, as_json: bool):
 def export(limit: int, fmt: str, output: str):
     """Export round data to JSON or CSV."""
     import csv
-    import io
 
     client = _get_client()
 
-    with console.status(f"Fetching up to {limit} rounds…"):
+    with console.status(f"Fetching up to {limit} rounds\u2026"):
         data = client.rounds.list(limit=limit)
 
     if not data:
         err_console.print("[red]No rounds found.[/red]")
         sys.exit(1)
 
-    out = open(output, "w", newline="") if output != "-" else sys.stdout
-
-    try:
+    def _write(out):
         if fmt == "json":
             json.dump(data, out, indent=2)
             out.write("\n")
@@ -443,10 +698,13 @@ def export(limit: int, fmt: str, output: str):
                 writer = csv.DictWriter(out, fieldnames=data[0].keys(), extrasaction="ignore")
                 writer.writeheader()
                 writer.writerows(data)
-    finally:
-        if output != "-":
-            out.close()
-            console.print(f"[green]✓[/green] Exported {len(data)} rounds to [bold]{output}[/bold]")
+
+    if output == "-":
+        _write(sys.stdout)
+    else:
+        with open(output, "w", newline="") as out:
+            _write(out)
+        console.print(f"[green]\u2713[/green] Exported {len(data)} rounds to [bold]{output}[/bold]")
 
 
 # ---------------------------------------------------------------------------

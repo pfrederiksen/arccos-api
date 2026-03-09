@@ -7,7 +7,7 @@ All API calls share a single requests.Session with automatic token refresh.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -42,7 +42,7 @@ class HttpClient:
     # Public interface
     # ------------------------------------------------------------------
 
-    def get(self, path: str, params: dict = None) -> Any:
+    def get(self, path: str, params: dict | None = None) -> Any:
         """
         Perform an authenticated GET request.
 
@@ -58,7 +58,7 @@ class HttpClient:
         """
         return self._request("GET", path, params=params)
 
-    def post(self, path: str, body: dict = None) -> Any:
+    def post(self, path: str, body: dict | None = None) -> Any:
         """
         Perform an authenticated POST request.
 
@@ -71,7 +71,7 @@ class HttpClient:
         """
         return self._request("POST", path, json=body)
 
-    def put(self, path: str, body: dict = None) -> Any:
+    def put(self, path: str, body: dict | None = None) -> Any:
         """Perform an authenticated PUT request."""
         return self._request("PUT", path, json=body)
 

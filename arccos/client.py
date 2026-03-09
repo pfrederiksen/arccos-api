@@ -18,14 +18,13 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
-from .auth import ArccosAuth, Credentials, DEFAULT_CREDS_PATH
 from ._http import HttpClient
-from .resources.rounds import RoundsResource
-from .resources.handicap import HandicapResource
+from .auth import DEFAULT_CREDS_PATH, ArccosAuth, Credentials
 from .resources.clubs import ClubsResource
 from .resources.courses import CoursesResource
+from .resources.handicap import HandicapResource
+from .resources.rounds import RoundsResource
 from .resources.stats import StatsResource
 
 logger = logging.getLogger(__name__)
@@ -77,10 +76,10 @@ class ArccosClient:
 
     def __init__(
         self,
-        email: Optional[str] = None,
-        password: Optional[str] = None,
+        email: str | None = None,
+        password: str | None = None,
         creds_path: Path = DEFAULT_CREDS_PATH,
-        creds: Optional[Credentials] = None,
+        creds: Credentials | None = None,
     ):
         self._auth = ArccosAuth(creds_path=creds_path)
 
@@ -121,7 +120,7 @@ class ArccosClient:
 
     @property
     def handicap(self) -> HandicapResource:
-        """Access handicap index and history. See :class:`~arccos.resources.handicap.HandicapResource`."""
+        """Access handicap index and history."""
         return self._handicap
 
     @property
@@ -136,7 +135,7 @@ class ArccosClient:
 
     @property
     def stats(self) -> StatsResource:
-        """Access strokes gained and performance stats. See :class:`~arccos.resources.stats.StatsResource`."""
+        """Access strokes gained and performance stats."""
         return self._stats
 
     # ------------------------------------------------------------------

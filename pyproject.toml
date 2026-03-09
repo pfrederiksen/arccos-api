@@ -1,14 +1,28 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
-name = "arccos"
+name = "arccos-api"
 version = "0.1.0"
 description = "Unofficial Python CLI and client library for the Arccos Golf API"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
+authors = [{name = "Paul Frederiksen"}]
+keywords = ["golf", "arccos", "api", "cli", "golf-stats"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "requests>=2.31",
     "click>=8.1",
@@ -22,6 +36,8 @@ dev = [
     "ruff",
     "mypy",
     "types-requests",
+    "build>=0.10.0",
+    "twine>=4.0.0",
 ]
 
 [project.scripts]
@@ -34,7 +50,7 @@ Issues     = "https://github.com/pfrederiksen/arccos-api/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts   = "-v --tb=short"
+addopts   = "-v --tb=short --cov=arccos --cov-report=term-missing --cov-report=html"
 
 [tool.ruff]
 line-length = 100
@@ -42,6 +58,15 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.coverage.run]
+source = ["arccos"]
+omit = ["arccos/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 80
 
 [tool.mypy]
 python_version = "3.11"

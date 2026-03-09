@@ -9,11 +9,12 @@ Quick start:
     print(client.handicap.current())
 """
 
-from .client import ArccosClient
 from .auth import ArccosAuth
+from .client import ArccosClient
 from .exceptions import (
-    ArccosError,
     ArccosAuthError,
+    ArccosError,
+    ArccosForbiddenError,
     ArccosNotFoundError,
     ArccosRateLimitError,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "ArccosAuth",
     "ArccosError",
     "ArccosAuthError",
+    "ArccosForbiddenError",
     "ArccosNotFoundError",
     "ArccosRateLimitError",
 ]

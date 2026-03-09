@@ -6,8 +6,6 @@ Endpoint prefix: /v2/sga, /users/{userId}/personalBests
 
 from __future__ import annotations
 
-from typing import Optional
-
 from .._http import HttpClient
 
 
@@ -109,6 +107,6 @@ class StatsResource:
             Current filter configuration dict.
         """
         return self._http.get(
-            f"/sga/filterSettings",
+            "/sga/filterSettings",
             params={"userId": self._user_id},
         )

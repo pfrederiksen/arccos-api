@@ -22,10 +22,9 @@ from __future__ import annotations
 import base64
 import json
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import requests
 
@@ -62,7 +61,7 @@ class Credentials:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Credentials":
+    def from_dict(cls, data: dict) -> Credentials:
         return cls(
             email=      data["email"],
             user_id=    data["user_id"],
@@ -78,7 +77,7 @@ class Credentials:
         logger.debug("Credentials saved to %s", path)
 
     @classmethod
-    def load(cls, path: Path = DEFAULT_CREDS_PATH) -> Optional["Credentials"]:
+    def load(cls, path: Path = DEFAULT_CREDS_PATH) -> Credentials | None:
         """Load credentials from disk, or return None if not found."""
         if not path.exists():
             return None
@@ -98,7 +97,7 @@ class Credentials:
             payload = self.token.split(".")[1]
             payload += "=" * (-len(payload) % 4)
             exp = json.loads(base64.b64decode(payload))["exp"]
-            now = datetime.now(timezone.utc).timestamp()
+            now = datetime.now(UTC).timestamp()
             return now > exp - grace_seconds
         except Exception:
             return True
@@ -123,7 +122,7 @@ class ArccosAuth:
     def __init__(
         self,
         creds_path: Path = DEFAULT_CREDS_PATH,
-        session: requests.Session = None,
+        session: requests.Session | None = None,
     ):
         self._creds_path = creds_path
         self._session = session or requests.Session()

@@ -6,8 +6,6 @@ Endpoint prefix: /courses, /users/{userId}/coursesPlayed
 
 from __future__ import annotations
 
-from typing import Optional
-
 from .._http import HttpClient
 
 
