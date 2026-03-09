@@ -1,33 +1,37 @@
 # arccos-api
 
-Unofficial Python client for the [Arccos Golf](https://arccosgolf.com) API.
+Unofficial Python client for the [Arccos Golf](https://arccosgolf.com) platform.
 
-Arccos provides no public API documentation. This client was reverse-engineered from the Arccos Golf Dashboard web app (`dashboard.arccosgolf.com`). It gives you full programmatic access to your golf data.
+Arccos provides no public API. This library was reverse-engineered from the Arccos Dashboard web app. It gives you full programmatic access to your own golf data — rounds, handicap, club distances, strokes gained, pace of play, and more.
 
-> **Note:** This is an unofficial client. Use it with your own account data. Be respectful of Arccos's servers (don't hammer endpoints). This project is not affiliated with Arccos Golf.
+> ⚠️ **Unofficial.** Not affiliated with Arccos Golf LLC. Use with your own account only. Respect their servers (no aggressive polling).
 
 ---
 
 ## Features
 
-- ✅ Full authentication (email/password → accessKey → JWT, auto-refresh)
-- ✅ All rounds with start/end times
-- ✅ Handicap index + history
-- ✅ Smart club distances
-- ✅ Courses played
-- ✅ Strokes gained / SGA data
-- ✅ Personal bests
-- ✅ Pace of play analysis (per course + overall)
+- ✅ Full authentication — email/password → `accessKey` → JWT, with auto-refresh
+- ✅ All rounds with start/end times (79 rounds, 33 courses, etc.)
+- ✅ Handicap index + revision history
+- ✅ Smart club distances (AI-filtered carry distances per club)
+- ✅ Strokes gained / SGA analysis
+- ✅ Courses played + course metadata
+- ✅ Pace of play analysis per course
+- ✅ [OpenAPI 3.1 spec](docs/openapi.yaml) — all known endpoints documented
+- ✅ Typed, tested, zero external dependencies beyond `requests`
 
 ---
 
 ## Installation
 
 ```bash
-pip install requests
+# From source (recommended while pre-release)
+git clone https://github.com/pfrederiksen/arccos-api.git
+cd arccos-api
+pip install -e ".[dev]"
 ```
 
-No other dependencies.
+Requires Python ≥ 3.11.
 
 ---
 
@@ -37,28 +41,34 @@ No other dependencies.
 from arccos import ArccosClient
 
 client = ArccosClient(email="you@example.com", password="your_password")
+# Credentials are cached in ~/.arccos_creds.json after first login.
+# The accessKey (~180 day TTL) silently refreshes the JWT (~3h TTL).
 
-# Get all rounds
-rounds = client.get_rounds()
+# Rounds
+rounds = client.rounds.list()
 print(f"{len(rounds)} rounds tracked")
 
+latest = rounds[0]
+print(f"Latest: {latest['startTime'][:10]}  score={latest['noOfShots']}")
+
 # Handicap
-handicap = client.get_handicap()
-print(f"Handicap Index: {handicap}")
+hcp = client.handicap.current()
+print(hcp)
 
 # Club distances
-clubs = client.get_club_distances()
-for club in clubs:
-    print(club)
+for club in client.clubs.smart_distances():
+    print(f"{club.get('clubType')}: {club.get('smartDistance')}y")
 
-# Pace of play by course
-pace = client.pace_of_play()
+# Strokes gained
+sg = client.stats.strokes_gained([latest["roundId"]])
+print(f"Overall SG: {sg.get('overallSga'):+.2f}")
+
+# Pace of play (fetches all rounds + course names)
+pace = client.rounds.pace_of_play()
 print(f"Overall avg: {pace['overall_avg_display']}")
-for course in pace['course_averages'][:5]:
-    print(f"  {course['avg_display']} — {course['course']} ({course['rounds']}x)")
+for c in pace["course_averages"][:5]:
+    print(f"  {c['avg_display']}  {c['course']}  ({c['rounds']}x)")
 ```
-
-Credentials are cached in `~/.arccos_creds.json` and the JWT auto-refreshes when expired.
 
 ---
 
@@ -68,82 +78,150 @@ Credentials are cached in `~/.arccos_creds.json` and the JWT auto-refreshes when
 export ARCCOS_EMAIL="you@example.com"
 export ARCCOS_PASSWORD="your_password"
 
-python arccos.py pace      # pace of play per course
-python arccos.py rounds    # recent rounds (raw JSON)
-python arccos.py handicap  # current handicap
-python arccos.py clubs     # smart club distances
+python -m arccos login        # authenticate + cache credentials
+python -m arccos pace         # pace of play by course
+python -m arccos rounds       # recent rounds
+python -m arccos rounds 20    # last 20 rounds
+python -m arccos handicap     # current handicap (raw JSON)
+python -m arccos clubs        # smart club distances
+```
+
+---
+
+## Project Structure
+
+```
+arccos-api/
+├── arccos/
+│   ├── __init__.py          # Public API surface
+│   ├── __main__.py          # CLI (python -m arccos)
+│   ├── auth.py              # Two-step auth flow + credential caching
+│   ├── client.py            # ArccosClient — main entry point
+│   ├── _http.py             # Authenticated HTTP client (auto-refresh)
+│   ├── exceptions.py        # Typed exception hierarchy
+│   └── resources/
+│       ├── rounds.py        # GET /users/{id}/rounds
+│       ├── handicap.py      # GET /users/{id}/handicaps
+│       ├── clubs.py         # GET /v4/clubs/user/{id}/smart-distances
+│       ├── courses.py       # GET /courses/{id}
+│       └── stats.py         # GET /v2/sga/shots/{roundIds}
+├── docs/
+│   └── openapi.yaml         # OpenAPI 3.1 spec (all known endpoints)
+├── examples/
+│   ├── basic_usage.py       # Getting started
+│   └── pace_of_play.py      # Pace of play analysis
+├── tests/
+│   ├── test_auth.py         # Auth unit tests (mocked)
+│   └── test_rounds.py       # Rounds resource tests
+└── pyproject.toml
 ```
 
 ---
 
 ## API Reference
 
-### Auth
+Full OpenAPI 3.1 spec: [`docs/openapi.yaml`](docs/openapi.yaml)
+
+### Authentication (two-step)
+
+All auth calls go to `https://authentication.arccosgolf.com`.
 
 ```
-POST https://authentication.arccosgolf.com/accessKeys
-  body: {email, password, signedInByFacebook: "F"}
-  → {userId, accessKey, secret}
+POST /accessKeys
+  Body: {"email": "...", "password": "...", "signedInByFacebook": "F"}
+  → {"userId": "...", "accessKey": "...", "secret": "..."}
 
-POST https://authentication.arccosgolf.com/tokens
-  body: {userId, accessKey}
-  → {userId, token}  (JWT ~3h, accessKey valid ~180 days)
+POST /tokens
+  Body: {"userId": "...", "accessKey": "..."}
+  → {"userId": "...", "token": "<jwt>"}
 ```
 
-### Endpoints (all require `Authorization: Bearer <token>`)
+The JWT expires in ~3 hours. The `accessKey` is valid for ~180 days.
+Call `POST /tokens` again with the same `accessKey` to refresh the JWT silently.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/users/{userId}/rounds?offSet=0&limit=100&roundType=flagship` | All rounds |
-| GET | `/users/{userId}/rounds/{roundId}` | Single round |
-| GET | `/users/{userId}/handicaps/latest` | Current handicap |
-| GET | `/users/{userId}/handicaps?rounds=20` | Handicap history |
-| GET | `/users/{userId}/coursesPlayed` | Courses played |
-| GET | `/users/{userId}/personalBests?tags=allTimeBest` | Personal bests |
-| GET | `/v4/clubs/user/{userId}/smart-distances` | Club distances |
-| GET | `/v2/sga/shots/{roundId}` | Strokes gained for a round |
+### API Endpoints
 
-### Round object
+All calls go to `https://api.arccosgolf.com` with `Authorization: Bearer <token>`.
 
-Each round includes:
+| Resource | Method | Path |
+|----------|--------|------|
+| Rounds   | GET | `/users/{userId}/rounds?offSet=0&limit=200&roundType=flagship` |
+| Round    | GET | `/users/{userId}/rounds/{roundId}` |
+| Holes    | GET | `/users/{userId}/rounds/{roundId}/holes` |
+| Handicap | GET | `/users/{userId}/handicaps/latest` |
+| Hcp Hist | GET | `/users/{userId}/handicaps?rounds=20` |
+| Clubs    | GET | `/v4/clubs/user/{userId}/smart-distances` |
+| Club Shots | GET | `/users/{userId}/bags/{bagId}/clubs/{clubId}/shots` |
+| Courses Played | GET | `/users/{userId}/coursesPlayed` |
+| Course   | GET | `/courses/{courseId}?courseVersion=1` |
+| SGA      | GET | `/v2/sga/shots/{roundId}?roundId={roundId}` |
+| Personal Bests | GET | `/users/{userId}/personalBests?tags=allTimeBest` |
+
+### Round Object
 
 ```json
 {
   "roundId": 26685289,
   "courseId": 10769,
+  "courseVersion": 11,
   "startTime": "2026-03-08T19:17:28.000000Z",
   "endTime":   "2026-03-09T00:46:31.000000Z",
   "noOfShots": 85,
   "noOfHoles": 18,
-  "isEnded": "T",
+  "isEnded":   "T",
   "teeId": 1
 }
 ```
 
-Pace of play = `endTime - startTime`.
+**Pace of play** = `endTime - startTime`. Both are UTC timestamps.
 
 ---
 
 ## How It Was Reverse-Engineered
 
-1. Loaded `dashboard.arccosgolf.com` and extracted the webpack bundle
+1. Loaded `dashboard.arccosgolf.com` and fetched the webpack bundle
 2. Searched for `authentication.arccosgolf.com` and `api.arccosgolf.com` URL patterns
-3. Found the Redux thunk: `login` dispatches `AT({key:"accessKeys"})` → `AT({key:"token"})`
-4. Traced the two-step auth flow: `/accessKeys` → `/tokens`
-5. Confirmed all endpoints by testing against the live API
+3. Found the Redux async thunk for login — it calls `AT({key:"accessKeys"})` then `AT({key:"token"})`
+4. Identified the two-step auth flow: `POST /accessKeys` → `POST /tokens`
+5. Extracted the full API config object from the bundle (all endpoint URL templates)
+6. Confirmed all documented endpoints against the live API
+
+The JWT uses HS256. The `accessKey` is a hex string (SHA-1 length). The `secret` field returned by `/accessKeys` appears unused by the web client.
 
 ---
 
-## Contributing
+## Development
 
-PRs welcome. Known gaps:
-- [ ] Round hole-by-hole shot data (endpoint exists, schema TBD)
-- [ ] Social/feed endpoints
-- [ ] Full SGA/strokes gained schema documentation
-- [ ] Async client (httpx)
+```bash
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Lint
+ruff check arccos/
+
+# Type check
+mypy arccos/
+```
+
+---
+
+## Known Gaps
+
+- [ ] Full hole/shot schema (structure partially documented)
+- [ ] Social/feed endpoints (`/users/{id}/feed`, follows, etc.)
+- [ ] Driving range session data (`roundType=range`)
+- [ ] Full strokes gained response schema
+- [ ] Async client (`httpx`)
+
+PRs welcome.
 
 ---
 
 ## Disclaimer
 
-This project is not affiliated with, endorsed by, or connected to Arccos Golf LLC. Use your own account credentials only.
+Not affiliated with, endorsed by, or connected to Arccos Golf LLC.
+Use your own account credentials only. This project is for personal data access and research.
+
+MIT License.

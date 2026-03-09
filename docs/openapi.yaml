@@ -1,0 +1,747 @@
+openapi: 3.1.0
+
+info:
+  title: Arccos Golf API (Unofficial)
+  version: "2026-03"
+  description: |
+    Reverse-engineered API documentation for the Arccos Golf platform.
+
+    **This is NOT an official Arccos Golf API.** These endpoints were discovered
+    by analysing the Arccos Dashboard web application (dashboard.arccosgolf.com).
+    Arccos Golf LLC does not provide public API documentation.
+
+    ## Authentication
+
+    Arccos uses a two-step authentication flow:
+
+    1. Exchange email + password for an `accessKey` (valid ~180 days)
+    2. Exchange `accessKey` for a short-lived JWT (~3 hours)
+
+    All API requests must include `Authorization: Bearer <token>`.
+
+    The JWT payload contains `userId`, `iat`, and `exp` fields.
+    Use the `accessKey` to silently refresh the JWT without re-entering credentials.
+
+    ## Base URLs
+
+    | Service        | Base URL                                      |
+    |----------------|-----------------------------------------------|
+    | Authentication | `https://authentication.arccosgolf.com`       |
+    | API            | `https://api.arccosgolf.com`                  |
+
+  contact:
+    url: https://github.com/pfrederiksen/arccos-api
+
+servers:
+  - url: https://api.arccosgolf.com
+    description: Arccos Golf API
+
+  - url: https://authentication.arccosgolf.com
+    description: Arccos Authentication Service
+
+tags:
+  - name: Authentication
+    description: Login, token refresh, and credential management
+  - name: Rounds
+    description: Golf round data and history
+  - name: Handicap
+    description: Handicap index and revision history
+  - name: Clubs
+    description: Club distances and bag configuration
+  - name: Courses
+    description: Course metadata and search
+  - name: Stats
+    description: Strokes gained analysis and performance statistics
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+
+paths:
+
+  # -------------------------------------------------------------------------
+  # Auth — authentication.arccosgolf.com
+  # -------------------------------------------------------------------------
+
+  /accessKeys:
+    post:
+      tags: [Authentication]
+      summary: Login with email and password
+      description: |
+        Step 1 of the two-step auth flow. Exchange email + password for an
+        `accessKey`. The `accessKey` is a long-lived credential (~180 days)
+        used to obtain short-lived JWTs without re-entering the password.
+
+        The `signedInByFacebook` field must be included with value `"F"` for
+        standard email/password logins.
+      servers:
+        - url: https://authentication.arccosgolf.com
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, signedInByFacebook]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: you@example.com
+                password:
+                  type: string
+                  format: password
+                  example: "correcthorsebattery"
+                signedInByFacebook:
+                  type: string
+                  enum: ["F", "T"]
+                  default: "F"
+                  description: Pass `"F"` for standard email/password login.
+      responses:
+        "200":
+          description: Access key issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessKeyResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Missing or invalid parameters
+
+  /tokens:
+    post:
+      tags: [Authentication]
+      summary: Exchange accessKey for a JWT
+      description: |
+        Step 2 of the two-step auth flow (and the refresh flow).
+
+        Exchange a `userId` + `accessKey` pair for a short-lived JWT.
+        The JWT is valid for approximately 3 hours. To refresh silently,
+        call this endpoint again with the same `accessKey`.
+
+        The `accessKey` expires after approximately 180 days. After expiry,
+        the user must log in again with email + password via `/accessKeys`.
+      servers:
+        - url: https://authentication.arccosgolf.com
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, accessKey]
+              properties:
+                userId:
+                  type: string
+                  description: Arccos user ID from the `/accessKeys` response
+                  example: "199585b0e18a11ee908e97aa3cfe7d12"
+                accessKey:
+                  type: string
+                  description: Long-lived access key from `/accessKeys`
+                  example: "81E6AB3B4EDA3B811802F342456F1C0FF380D77A"
+      responses:
+        "200":
+          description: JWT issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # -------------------------------------------------------------------------
+  # Rounds
+  # -------------------------------------------------------------------------
+
+  /users/{userId}/rounds:
+    get:
+      tags: [Rounds]
+      summary: List rounds
+      description: |
+        Fetch all GPS-tracked rounds for the user. Supports pagination and
+        optional date/course filters.
+
+        Rounds are returned newest-first. Each round includes `startTime` and
+        `endTime` in UTC, which can be used to compute pace of play.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - name: offSet
+          in: query
+          schema: {type: integer, default: 0}
+          description: Pagination offset (note the unusual capitalisation)
+        - name: limit
+          in: query
+          schema: {type: integer, default: 20, maximum: 200}
+          description: Maximum rounds to return
+        - name: roundType
+          in: query
+          schema: {type: string, enum: [flagship, range], default: flagship}
+          description: "`flagship` = GPS rounds. `range` = driving range sessions."
+        - name: beforeDate
+          in: query
+          schema: {type: string, format: date}
+          description: Return rounds on or before this date (YYYY-MM-DD)
+        - name: afterDate
+          in: query
+          schema: {type: string, format: date}
+          description: Return rounds on or after this date (YYYY-MM-DD)
+        - name: courseId
+          in: query
+          schema: {type: integer}
+          description: Filter to rounds at a specific course
+      responses:
+        "200":
+          description: List of rounds
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rounds:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Round"
+                  totalCount:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/{userId}/rounds/{roundId}:
+    get:
+      tags: [Rounds]
+      summary: Get a single round
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/roundId"
+      responses:
+        "200":
+          description: Round detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Round"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /users/{userId}/rounds/{roundId}/holes:
+    get:
+      tags: [Rounds]
+      summary: Get hole-by-hole data for a round
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - $ref: "#/components/parameters/roundId"
+      responses:
+        "200":
+          description: Hole data array
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Hole"
+
+  # -------------------------------------------------------------------------
+  # Handicap
+  # -------------------------------------------------------------------------
+
+  /users/{userId}/handicaps/latest:
+    get:
+      tags: [Handicap]
+      summary: Get current handicap index
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: Current handicap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Handicap"
+
+  /users/{userId}/handicaps:
+    get:
+      tags: [Handicap]
+      summary: Get handicap history
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - name: rounds
+          in: query
+          schema: {type: integer, default: 20}
+          description: Number of rounds to include in history
+      responses:
+        "200":
+          description: Handicap history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HandicapHistoryEntry"
+
+  # -------------------------------------------------------------------------
+  # Clubs
+  # -------------------------------------------------------------------------
+
+  /v4/clubs/user/{userId}/smart-distances:
+    get:
+      tags: [Clubs]
+      summary: Get smart club distances
+      description: |
+        Returns AI-computed "smart distances" for each club in the user's bag.
+        Outliers (mishits) are filtered out, giving a realistic carry distance.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - name: numberOfShots
+          in: query
+          schema: {type: integer}
+          description: Minimum shots required for a distance to be included
+        - name: startDate
+          in: query
+          schema: {type: string, format: date}
+        - name: endDate
+          in: query
+          schema: {type: string, format: date}
+      responses:
+        "200":
+          description: Club distance array
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClubDistance"
+
+  /users/{userId}/bags/{bagId}/clubs/{clubId}/shots:
+    get:
+      tags: [Clubs]
+      summary: Get individual shots for a club
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - name: bagId
+          in: path
+          required: true
+          schema: {type: string}
+        - name: clubId
+          in: path
+          required: true
+          schema: {type: string}
+        - name: limit
+          in: query
+          schema: {type: integer, default: 100}
+        - name: offSet
+          in: query
+          schema: {type: integer, default: 0}
+        - name: roundId
+          in: query
+          schema: {type: string}
+          description: Filter to a specific round
+      responses:
+        "200":
+          description: Shot array
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Shot"
+
+  # -------------------------------------------------------------------------
+  # Courses
+  # -------------------------------------------------------------------------
+
+  /courses/{courseId}:
+    get:
+      tags: [Courses]
+      summary: Get course metadata
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema: {type: integer}
+          example: 10769
+        - name: courseVersion
+          in: query
+          schema: {type: integer, default: 1}
+          description: Use the `courseVersion` from a round object for exact tee data
+      responses:
+        "200":
+          description: Course metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Course"
+
+  /users/{userId}/coursesPlayed:
+    get:
+      tags: [Courses]
+      summary: Get courses played by the user
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+      responses:
+        "200":
+          description: Array of played courses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CourseSummary"
+
+  /v2/courses:
+    get:
+      tags: [Courses]
+      summary: Search courses
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          required: true
+          schema: {type: string}
+          description: Course name search string
+      responses:
+        "200":
+          description: Matching courses
+
+  # -------------------------------------------------------------------------
+  # Stats / Strokes Gained
+  # -------------------------------------------------------------------------
+
+  /v2/sga/shots/{roundIds}:
+    get:
+      tags: [Stats]
+      summary: Get strokes gained for one or more rounds
+      description: |
+        Returns Strokes Gained Analysis (SGA) for the specified round(s).
+        Pass multiple round IDs as a comma-separated string for aggregate analysis.
+
+        Strokes gained measures each shot against the expected strokes for a scratch
+        golfer from the same position. Positive = better than scratch; negative = worse.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: roundIds
+          in: path
+          required: true
+          schema: {type: string}
+          description: Single round ID or comma-separated list (e.g. `26685289,26627133`)
+          example: "26685289"
+        - name: roundId
+          in: query
+          required: true
+          schema: {type: string}
+          description: Same value as path parameter (required by the API)
+      responses:
+        "200":
+          description: Strokes gained data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StrokesGained"
+
+  /users/{userId}/personalBests:
+    get:
+      tags: [Stats]
+      summary: Get all-time personal bests
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/userId"
+        - name: tags
+          in: query
+          schema: {type: string, default: allTimeBest}
+      responses:
+        "200":
+          description: Personal bests data
+
+# ---------------------------------------------------------------------------
+# Components
+# ---------------------------------------------------------------------------
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT obtained from `POST /tokens` on authentication.arccosgolf.com.
+        Expires approximately every 3 hours. Refresh using the stored `accessKey`.
+
+  parameters:
+    userId:
+      name: userId
+      in: path
+      required: true
+      schema: {type: string}
+      description: Arccos user ID (UUID-like hex string)
+      example: "199585b0e18a11ee908e97aa3cfe7d12"
+
+    roundId:
+      name: roundId
+      in: path
+      required: true
+      schema: {type: integer}
+      example: 26685289
+
+  responses:
+    Unauthorized:
+      description: Authentication failed or token expired
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+  schemas:
+
+    AccessKeyResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+          example: "199585b0e18a11ee908e97aa3cfe7d12"
+        accessKey:
+          type: string
+          example: "81E6AB3B4EDA3B811802F342456F1C0FF380D77A"
+        secret:
+          type: string
+          description: Additional credential (purpose undocumented)
+
+    TokenResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+        token:
+          type: string
+          description: JWT (HS256, ~3h expiry)
+
+    Round:
+      type: object
+      properties:
+        roundId:
+          type: integer
+          example: 26685289
+        courseId:
+          type: integer
+          example: 10769
+        courseVersion:
+          type: integer
+          example: 11
+        startTime:
+          type: string
+          format: date-time
+          description: Round start time in UTC
+          example: "2026-03-08T19:17:28.000000Z"
+        endTime:
+          type: string
+          format: date-time
+          description: Round end time in UTC (use with startTime to compute pace)
+          example: "2026-03-09T00:46:31.000000Z"
+        noOfShots:
+          type: integer
+          description: Total shots (gross score)
+          example: 85
+        noOfHoles:
+          type: integer
+          enum: [9, 18]
+          example: 18
+        noOfHolesOverride:
+          type: integer
+          nullable: true
+        scoreOverride:
+          type: integer
+          nullable: true
+        teeId:
+          type: integer
+          example: 1
+        isEnded:
+          type: string
+          enum: ["T", "F"]
+          description: "`\"T\"` = completed round"
+        isPrivate:
+          type: string
+          enum: ["T", "F"]
+        isVerified:
+          type: string
+          enum: ["T", "F"]
+        isDriverRound:
+          type: string
+          enum: ["T", "F"]
+        roundTypeId:
+          type: integer
+        scoreFormatId:
+          type: integer
+        ballMakeId:
+          type: integer
+        ballModelId:
+          type: integer
+        roundUUID:
+          type: string
+        lastModifiedTime:
+          type: string
+          format: date-time
+        notes:
+          type: string
+          nullable: true
+
+    Hole:
+      type: object
+      description: Hole-level round data (schema partially documented)
+      properties:
+        holeNumber:
+          type: integer
+        par:
+          type: integer
+        score:
+          type: integer
+        putts:
+          type: integer
+        fairwayHit:
+          type: string
+          enum: ["T", "F", "N"]
+          description: "`\"T\"` hit, `\"F\"` missed, `\"N\"` not applicable (par 3)"
+        greenInRegulation:
+          type: string
+          enum: ["T", "F"]
+
+    Handicap:
+      type: object
+      description: Handicap index data (exact schema varies by API version)
+      additionalProperties: true
+
+    HandicapHistoryEntry:
+      type: object
+      description: Single handicap revision entry
+      additionalProperties: true
+
+    ClubDistance:
+      type: object
+      description: Smart distance data for a single club
+      properties:
+        clubType:
+          type: string
+          example: "Driver"
+        averageDistance:
+          type: number
+          description: Average carry distance in yards
+        smartDistance:
+          type: number
+          description: Recommended "smart" carry distance (outliers removed)
+        totalShots:
+          type: integer
+          description: Total tracked shots for this club
+      additionalProperties: true
+
+    Shot:
+      type: object
+      description: Individual tracked shot data
+      additionalProperties: true
+
+    Course:
+      type: object
+      properties:
+        courseId:
+          type: integer
+        courseName:
+          type: string
+          example: "Las Vegas Golf Club"
+        city:
+          type: string
+        state:
+          type: string
+        country:
+          type: string
+        tees:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeeSet"
+      additionalProperties: true
+
+    TeeSet:
+      type: object
+      properties:
+        teeId:
+          type: integer
+        teeColor:
+          type: string
+        courseRating:
+          type: number
+        slopeRating:
+          type: integer
+        yardage:
+          type: integer
+
+    CourseSummary:
+      type: object
+      properties:
+        courseId:
+          type: integer
+        courseName:
+          type: string
+        roundsPlayed:
+          type: integer
+      additionalProperties: true
+
+    StrokesGained:
+      type: object
+      description: |
+        Strokes Gained Analysis across one or more rounds.
+        Positive values = better than scratch; negative = worse.
+      properties:
+        overallSga:
+          type: number
+          description: Total strokes gained vs. scratch
+        drivingSga:
+          type: number
+          description: Strokes gained off the tee
+        approachSga:
+          type: number
+          description: Strokes gained on approach shots
+        shortSga:
+          type: number
+          description: Strokes gained around the green (chipping/pitching)
+        puttingSga:
+          type: number
+          description: Strokes gained on the green
+      additionalProperties: true
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: integer
+              description: Arccos internal error code
+            description:
+              type: string
+              description: Human-readable error message
