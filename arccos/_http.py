@@ -88,9 +88,11 @@ class HttpClient:
         headers = {"Authorization": self._auth.auth_header(self._creds)}
 
         url = f"{API_BASE}{path}"
-        logger.debug("%s %s params=%s", method, url, kwargs.get("params"))
+        logger.debug("%s %s", method, url)
 
-        resp = self._session.request(method, url, headers=headers, timeout=15, **kwargs)
+        resp = self._session.request(
+            method, url, headers=headers, timeout=15, verify=True, **kwargs
+        )
         raise_for_status(resp)
 
         if resp.content:

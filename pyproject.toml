@@ -24,9 +24,9 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "requests>=2.31",
-    "click>=8.1",
-    "rich>=13.0",
+    "requests>=2.31,<3",
+    "click>=8.1,<9",
+    "rich>=13.0,<15",
 ]
 
 [project.optional-dependencies]

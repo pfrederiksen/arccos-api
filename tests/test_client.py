@@ -2,15 +2,12 @@
 Tests for arccos.client — ArccosClient initialization paths.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+from conftest import make_creds
 
 from arccos.client import ArccosClient
-from arccos.auth import Credentials
-from arccos.exceptions import ArccosAuthError
-
-from conftest import make_creds, make_jwt
 
 
 class TestArccosClientInit:
@@ -48,7 +45,7 @@ class TestArccosClientInit:
         MockCreds.load.return_value = creds
         auth_instance.ensure_fresh.return_value = creds
 
-        client = ArccosClient()
+        ArccosClient()
 
         MockCreds.load.assert_called_once()
         auth_instance.ensure_fresh.assert_called_once_with(creds)

@@ -659,6 +659,10 @@ def logout():
             "[green]\u2713[/green] Credentials removed from "
             "[bold]~/.arccos_creds.json[/bold]"
         )
+        console.print(
+            "[dim]Note: Server-side tokens are not revoked. "
+            "The access key remains valid until it expires (~180 days).[/dim]"
+        )
     else:
         console.print("[dim]No cached credentials found.[/dim]")
 
@@ -702,7 +706,9 @@ def export(limit: int, fmt: str, output: str):
     if output == "-":
         _write(sys.stdout)
     else:
-        with open(output, "w", newline="") as out:
+        # Resolve symlinks to prevent symlink-based file overwrites
+        out_path = os.path.realpath(output)
+        with open(out_path, "w", newline="") as out:
             _write(out)
         console.print(f"[green]\u2713[/green] Exported {len(data)} rounds to [bold]{output}[/bold]")
 

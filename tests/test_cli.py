@@ -100,7 +100,9 @@ class TestRoundsCommand:
         client.rounds.list.return_value = []
         mock_get.return_value = client
 
-        runner.invoke(cli, ["rounds", "-n", "5", "-o", "10", "-a", "2025-01-01", "-b", "2025-06-01"])
+        runner.invoke(
+            cli, ["rounds", "-n", "5", "-o", "10", "-a", "2025-01-01", "-b", "2025-06-01"]
+        )
         client.rounds.list.assert_called_once_with(
             limit=5, offset=10, after_date="2025-01-01", before_date="2025-06-01"
         )
@@ -464,6 +466,7 @@ class TestLogoutCommand:
         assert result.exit_code == 0
         assert "removed" in result.output
         assert not creds_file.exists()
+        assert "tokens are not revoked" in result.output
 
     def test_logout_no_creds(self, runner, tmp_path):
         creds_file = tmp_path / ".arccos_creds.json"

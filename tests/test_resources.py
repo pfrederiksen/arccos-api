@@ -11,7 +11,6 @@ from arccos.resources.courses import CoursesResource
 from arccos.resources.handicap import HandicapResource
 from arccos.resources.stats import StatsResource
 
-
 # ---------------------------------------------------------------------------
 # ClubsResource
 # ---------------------------------------------------------------------------
@@ -62,7 +61,7 @@ class TestClubsResource:
     def test_club_shots(self):
         res, http = self._resource()
         http.get.return_value = [{"shotId": 1}]
-        result = res.club_shots("bag-1", "club-1", limit=50, offset=10)
+        res.club_shots("bag-1", "club-1", limit=50, offset=10)
         params = http.get.call_args[1]["params"]
         assert params["limit"] == 50
         assert params["offSet"] == 10
@@ -189,7 +188,7 @@ class TestStatsResource:
     def test_strokes_to_get_down(self):
         res, http = self._resource()
         http.get.return_value = {"data": "value"}
-        result = res.strokes_to_get_down()
+        res.strokes_to_get_down()
         http.get.assert_called_with("/v2/sga/strokes-to-get-down")
 
     def test_personal_bests(self):
@@ -203,12 +202,12 @@ class TestStatsResource:
     def test_overall_stats(self):
         res, http = self._resource()
         http.get.return_value = {"girPct": 44.2}
-        result = res.overall_stats()
+        res.overall_stats()
         http.get.assert_called_with("/users/user-123/stats/overall")
 
     def test_sga_filter_settings(self):
         res, http = self._resource()
         http.get.return_value = {"dateRange": "last90"}
-        result = res.sga_filter_settings()
+        res.sga_filter_settings()
         params = http.get.call_args[1]["params"]
         assert params["userId"] == "user-123"

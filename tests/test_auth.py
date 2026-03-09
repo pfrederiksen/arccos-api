@@ -4,17 +4,15 @@ Tests for arccos.auth — authentication flow.
 Run: pytest tests/
 """
 
-import json
 import base64
+import json
 import time
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from arccos.auth import ArccosAuth, Credentials
 from arccos.exceptions import ArccosAuthError
-
 
 # ---------------------------------------------------------------------------
 # Helpers

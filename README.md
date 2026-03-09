@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.png" alt="arccos-api banner" width="100%">
+</p>
+
 # arccos-api
 
 Unofficial Python client and CLI for the [Arccos Golf](https://arccosgolf.com) platform.
@@ -154,6 +158,8 @@ export ARCCOS_PASSWORD="your_password"
 arccos rounds
 ```
 
+> **Security note:** Environment variables may be visible in process listings (`ps`) and shell history. Prefer `arccos login` for interactive use.
+
 ## Python Library
 
 ```python
@@ -294,6 +300,13 @@ mypy arccos/            # type check
 ```
 
 Coverage report: `htmlcov/index.html`. Minimum threshold: 80% (configured in `pyproject.toml`).
+
+## Security
+
+- Credentials are cached in `~/.arccos_creds.json` (mode `0600` — owner-only read/write). The file contains your access key (~180-day validity) and JWT token. Keep it safe.
+- All API communication uses HTTPS with TLS certificate verification.
+- `arccos logout` removes the local credential file but does **not** revoke server-side tokens. If you suspect your credentials were compromised, change your Arccos password.
+- The export command restricts output paths to your home directory or current working directory.
 
 ## Known Gaps
 

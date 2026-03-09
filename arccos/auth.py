@@ -20,8 +20,10 @@ Use the accessKey to silently refresh the JWT without re-entering credentials.
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -71,9 +73,24 @@ class Credentials:
         )
 
     def save(self, path: Path = DEFAULT_CREDS_PATH) -> None:
-        """Persist credentials to a JSON file (mode 0600)."""
-        path.write_text(json.dumps(self.to_dict(), indent=2))
-        path.chmod(0o600)
+        """Persist credentials to a JSON file (mode 0600).
+
+        Uses os.open() with O_CREAT to create the file with 0o600 from the
+        start, avoiding a TOCTOU race where the file is briefly world-readable.
+        """
+        fd = os.open(
+            str(path),
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+            0o600,
+        )
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w") as f:
+                json.dump(self.to_dict(), f, indent=2)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.close(fd)
+            raise
         logger.debug("Credentials saved to %s", path)
 
     @classmethod
@@ -94,12 +111,17 @@ class Credentials:
     def token_expired(self, grace_seconds: int = 60) -> bool:
         """Return True if the JWT is expired (or will expire within *grace_seconds*)."""
         try:
-            payload = self.token.split(".")[1]
+            parts = self.token.split(".")
+            if len(parts) != 3:
+                return True
+            payload = parts[1]
             payload += "=" * (-len(payload) % 4)
-            exp = json.loads(base64.b64decode(payload))["exp"]
+            claims = json.loads(base64.b64decode(payload))
+            if not isinstance(claims, dict) or "exp" not in claims:
+                return True
             now = datetime.now(UTC).timestamp()
-            return now > exp - grace_seconds
-        except Exception:
+            return now > claims["exp"] - grace_seconds
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
             return True
 
 
@@ -155,6 +177,7 @@ class ArccosAuth:
             f"{AUTH_BASE}/accessKeys",
             json={"email": email, "password": password, "signedInByFacebook": "F"},
             timeout=15,
+            verify=True,
         )
         if resp.status_code == 401:
             raise ArccosAuthError(
@@ -164,8 +187,14 @@ class ArccosAuth:
         raise_for_status(resp)
         data = resp.json()
 
-        access_key = data["accessKey"]
-        user_id    = data["userId"]
+        try:
+            access_key = data["accessKey"]
+            user_id    = data["userId"]
+        except (KeyError, TypeError) as exc:
+            raise ArccosAuthError(
+                "Unexpected response from authentication server.",
+                status_code=resp.status_code,
+            ) from exc
         secret     = data.get("secret", "")
 
         # Step 2: accessKey → JWT
@@ -253,6 +282,7 @@ class ArccosAuth:
             f"{AUTH_BASE}/tokens",
             json={"userId": user_id, "accessKey": access_key},
             timeout=15,
+            verify=True,
         )
         if resp.status_code == 401:
             raise ArccosAuthError(

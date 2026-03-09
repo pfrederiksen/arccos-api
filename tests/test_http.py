@@ -2,14 +2,13 @@
 Tests for arccos._http — the internal HTTP client.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
-from arccos._http import HttpClient, API_BASE
-from arccos.exceptions import ArccosNotFoundError
-
 from conftest import make_creds
+
+from arccos._http import API_BASE, HttpClient
+from arccos.exceptions import ArccosNotFoundError
 
 
 class TestHttpClient:

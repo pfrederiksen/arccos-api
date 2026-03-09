@@ -5,12 +5,11 @@ Shared test fixtures for the arccos test suite.
 import base64
 import json
 import time
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-from arccos.auth import ArccosAuth, Credentials
+from arccos.auth import Credentials
 
 
 def make_jwt(exp_offset: int = 3600, user_id: str = "test-user") -> str:

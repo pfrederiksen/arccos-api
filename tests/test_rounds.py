@@ -3,6 +3,7 @@ Tests for arccos.resources.rounds.
 """
 
 from unittest.mock import MagicMock
+
 from arccos.resources.rounds import RoundsResource
 
 
