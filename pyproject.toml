@@ -43,6 +43,9 @@ dev = [
 [project.scripts]
 arccos = "arccos.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["arccos*"]
+
 [project.urls]
 Homepage   = "https://github.com/pfrederiksen/arccos-api"
 Repository = "https://github.com/pfrederiksen/arccos-api"
