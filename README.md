@@ -25,65 +25,80 @@ Arccos provides no public API. This library was reverse-engineered from the Arcc
 ## Installation
 
 ```bash
-# From source (recommended while pre-release)
 git clone https://github.com/pfrederiksen/arccos-api.git
 cd arccos-api
-pip install -e ".[dev]"
+pip install -e .
 ```
 
-Requires Python ≥ 3.11.
+Requires Python ≥ 3.11. Dependencies: `requests`, `click`, `rich`.
 
 ---
 
-## Quick Start
+## CLI — Just Use It
+
+The fastest way to get your data. No coding required.
+
+```bash
+# 1. Log in (saves credentials to ~/.arccos_creds.json)
+arccos login
+
+# 2. Pull your data
+arccos rounds                  # recent rounds (table)
+arccos rounds -n 50            # last 50 rounds
+arccos rounds --after 2025-01-01   # filter by date
+
+arccos handicap                # current handicap index
+arccos handicap --history      # revision history
+
+arccos clubs                   # smart club distances
+arccos clubs --after 2025-01-01    # distances from this year only
+
+arccos pace                    # pace of play by course
+arccos pace -n 50              # analyse last 50 rounds only
+
+arccos stats --latest          # strokes gained for your last round
+arccos stats 26685289          # strokes gained for a specific round
+
+arccos export -f csv -o rounds.csv   # export all rounds to CSV
+arccos export -f json               # dump raw JSON to stdout
+
+# Every command supports --help
+arccos rounds --help
+```
+
+**Skip the login prompt** by setting environment variables:
+```bash
+export ARCCOS_EMAIL="you@example.com"
+export ARCCOS_PASSWORD="your_password"
+arccos rounds
+```
+
+---
+
+## Python Library
+
+Use it in your own scripts or projects:
 
 ```python
 from arccos import ArccosClient
 
 client = ArccosClient(email="you@example.com", password="your_password")
-# Credentials are cached in ~/.arccos_creds.json after first login.
-# The accessKey (~180 day TTL) silently refreshes the JWT (~3h TTL).
+# Credentials cached in ~/.arccos_creds.json. Auto-refreshes silently.
 
-# Rounds
 rounds = client.rounds.list()
 print(f"{len(rounds)} rounds tracked")
 
-latest = rounds[0]
-print(f"Latest: {latest['startTime'][:10]}  score={latest['noOfShots']}")
-
-# Handicap
 hcp = client.handicap.current()
 print(hcp)
 
-# Club distances
 for club in client.clubs.smart_distances():
     print(f"{club.get('clubType')}: {club.get('smartDistance')}y")
 
-# Strokes gained
-sg = client.stats.strokes_gained([latest["roundId"]])
+sg = client.stats.strokes_gained([rounds[0]["roundId"]])
 print(f"Overall SG: {sg.get('overallSga'):+.2f}")
 
-# Pace of play (fetches all rounds + course names)
 pace = client.rounds.pace_of_play()
-print(f"Overall avg: {pace['overall_avg_display']}")
-for c in pace["course_averages"][:5]:
-    print(f"  {c['avg_display']}  {c['course']}  ({c['rounds']}x)")
-```
-
----
-
-## CLI
-
-```bash
-export ARCCOS_EMAIL="you@example.com"
-export ARCCOS_PASSWORD="your_password"
-
-python -m arccos login        # authenticate + cache credentials
-python -m arccos pace         # pace of play by course
-python -m arccos rounds       # recent rounds
-python -m arccos rounds 20    # last 20 rounds
-python -m arccos handicap     # current handicap (raw JSON)
-python -m arccos clubs        # smart club distances
+print(f"Overall avg pace: {pace['overall_avg_display']}")
 ```
 
 ---
