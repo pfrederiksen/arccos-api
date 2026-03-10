@@ -8,6 +8,7 @@ Usage:
 """
 
 import os
+
 from arccos import ArccosClient
 
 client = ArccosClient(email=os.environ["ARCCOS_EMAIL"], password=os.environ["ARCCOS_PASSWORD"])
@@ -15,7 +16,9 @@ client = ArccosClient(email=os.environ["ARCCOS_EMAIL"], password=os.environ["ARC
 print("Fetching all rounds (this may take a moment)...")
 data = client.rounds.pace_of_play()
 
-print(f"\n📊 Pace of Play — {len(data['rounds'])} rounds across {len(data['course_averages'])} courses")
+n_rounds = len(data["rounds"])
+n_courses = len(data["course_averages"])
+print(f"\nPace of Play — {n_rounds} rounds across {n_courses} courses")
 print(f"   Overall average: {data['overall_avg_display']}\n")
 
 print("🐌 Slowest courses:")

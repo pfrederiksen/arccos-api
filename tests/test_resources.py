@@ -23,17 +23,22 @@ class TestClubsResource:
     def test_smart_distances_returns_list(self):
         res, http = self._resource()
         http.get.return_value = [
-            {"clubType": "Driver", "smartDistance": 240, "averageDistance": 245, "totalShots": 50},
+            {
+                "clubId": 1,
+                "smartDistance": {"distance": 252.3, "unit": "yd"},
+                "usage": {"count": 312},
+            },
         ]
         result = res.smart_distances()
         assert len(result) == 1
-        assert result[0]["clubType"] == "Driver"
+        assert result[0]["smartDistance"]["distance"] == 252.3
 
     def test_smart_distances_extracts_from_dict(self):
         res, http = self._resource()
-        http.get.return_value = {"clubs": [{"clubType": "7 Iron"}]}
+        club = {"clubId": 8, "smartDistance": {"distance": 160.0, "unit": "yd"}}
+        http.get.return_value = {"clubs": [club]}
         result = res.smart_distances()
-        assert result == [{"clubType": "7 Iron"}]
+        assert result == [club]
 
     def test_smart_distances_with_filters(self):
         res, http = self._resource()

@@ -8,6 +8,7 @@ Set environment variables before running:
 """
 
 import os
+
 from arccos import ArccosClient
 
 email    = os.environ["ARCCOS_EMAIL"]
@@ -38,9 +39,10 @@ print("\n=== Smart Club Distances ===")
 try:
     clubs = client.clubs.smart_distances()
     for club in clubs[:5]:
-        name = club.get("clubType") or club.get("name", "?")
-        dist = club.get("smartDistance") or club.get("averageDistance", "?")
-        print(f"  {name}: {dist}y")
+        sd = club.get("smartDistance", {})
+        dist = sd["distance"] if isinstance(sd, dict) else sd
+        shots = club.get("usage", {}).get("count", "?")
+        print(f"  clubId {club['clubId']}: {dist:.0f}y ({shots} shots)")
 except Exception as e:
     print(f"  Error: {e}")
 
