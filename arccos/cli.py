@@ -59,16 +59,22 @@ def _flag(minutes: int) -> str:
     return "\U0001f7e2"
 
 
-def _build_course_map(client) -> dict[int, str]:
-    """Build a courseId → courseName lookup from the user's played courses."""
+def _build_course_map(client) -> tuple[dict[int, str], dict[int, int]]:
+    """Build courseId → courseName and courseId → par lookups from played courses."""
     try:
         played = client.courses.played()
-        return {
+        names = {
             c["courseId"]: c.get("courseName") or c.get("name") or f"Course {c['courseId']}"
             for c in played
         }
+        pars = {
+            c["courseId"]: c["mensPar"]
+            for c in played
+            if c.get("mensPar")
+        }
+        return names, pars
     except Exception:
-        return {}
+        return {}, {}
 
 
 def _score_color(score: int, par: int | None) -> str:
@@ -167,7 +173,7 @@ def rounds(limit: int, offset: int, after: str, before: str, course: str, as_jso
             limit=limit, offset=offset,
             after_date=after, before_date=before,
         )
-        course_map = _build_course_map(client)
+        course_map, par_map = _build_course_map(client)
 
     if as_json:
         _output_json(data)
@@ -203,10 +209,17 @@ def rounds(limit: int, offset: int, after: str, before: str, course: str, as_jso
 
     for r in data:
         date  = r.get("startTime", "")[:10]
-        score = str(r.get("noOfShots", "\u2014"))
-        ou    = r.get("overUnder")
-        ou_s  = f"{ou:+d}" if ou is not None else ""
-        holes = str(r.get("noOfHoles", "\u2014"))
+        shots = r.get("noOfShots")
+        score = str(shots) if shots else "\u2014"
+        par   = par_map.get(r.get("courseId"))
+        n_holes = r.get("noOfHoles", 0)
+        # Compute +/- from score and course par (only for 18-hole rounds)
+        if shots and par and n_holes == 18:
+            diff = shots - par
+            ou_s = f"{diff:+d}"
+        else:
+            ou_s = ""
+        holes = str(n_holes) if n_holes else "\u2014"
         cname = course_map.get(r.get("courseId"), str(r.get("courseId", "\u2014")))
         rid   = str(r.get("roundId", "\u2014"))
         table.add_row(date, score, ou_s, holes, cname, rid)
@@ -625,10 +638,19 @@ def round_detail(round_id: int, as_json: bool):
     # --- Summary panel ---
     date = meta.get("startTime", "\u2014")[:10] if meta.get("startTime") else "\u2014"
     score = meta.get("noOfShots", "\u2014")
-    course_name = meta.get("courseName") or str(meta.get("courseId", "\u2014"))
     n_holes = meta.get("noOfHoles", "\u2014")
-    over_under = meta.get("overUnder")
-    ou_str = f" ({over_under:+d})" if over_under is not None else ""
+
+    # Resolve course name and par from played courses
+    course_map, course_par_map = _build_course_map(client)
+    cid = meta.get("courseId")
+    course_name = course_map.get(cid) or meta.get("courseName") or str(cid or "\u2014")
+    course_par = course_par_map.get(cid)
+
+    # Compute +/- from score and course par
+    if isinstance(score, int) and course_par and n_holes == 18:
+        ou_str = f" ({score - course_par:+d})"
+    else:
+        ou_str = ""
 
     summary = (
         f"[bold]Date:[/bold]   {date}\n"
@@ -820,12 +842,11 @@ def bests(as_json: bool):
         _output_json(data)
         return
 
-    if not data:
+    # The API returns {"achievements": [...]} where each has name, stats, course, round
+    achievements = data.get("achievements", []) if isinstance(data, dict) else data
+    if not achievements:
         console.print("[dim]No personal bests found.[/dim]")
         return
-
-    # personal_bests can be a dict or list — normalize
-    items = data if isinstance(data, list) else [data]
 
     table = Table(
         box=box.ROUNDED,
@@ -834,43 +855,67 @@ def bests(as_json: bool):
     )
     table.add_column("Record", style="white bold")
     table.add_column("Value", justify="right", style="green bold")
-    table.add_column("Details", style="dim")
+    table.add_column("Course", style="dim")
+    table.add_column("Date", style="dim")
 
-    BEST_LABELS = {
-        "lowestScore":       ("Lowest Score",       lambda v: str(v)),
-        "lowestScore9":      ("Lowest 9-Hole",      lambda v: str(v)),
-        "longestDrive":      ("Longest Drive",      lambda v: f"{v:.0f}y" if v else str(v)),
-        "fewestPutts":       ("Fewest Putts",       lambda v: str(v)),
-        "fewestPutts9":      ("Fewest Putts (9)",   lambda v: str(v)),
-        "mostBirdies":       ("Most Birdies",       lambda v: str(v)),
-        "mostPars":          ("Most Pars",          lambda v: str(v)),
-        "streakPar":         ("Longest Par Streak", lambda v: str(v)),
-        "streakBirdie":      ("Birdie Streak",      lambda v: str(v)),
-        "longestPutt":       ("Longest Putt",       lambda v: f"{v:.0f}ft" if v else str(v)),
+    # Map achievement names to display labels and value extractors
+    BEST_LABELS: dict[str, tuple[str, ...]] = {
+        "lowestScore":        ("Lowest Score",        "noOfShots"),
+        "longestDrive":       ("Longest Drive",       "driveDistance", "y"),
+        "bestRoundPutting":   ("Fewest Putts",        "noOfPutts"),
+        "highestOnePutts":    ("Most 1-Putts",        "noOfOnePutts"),
+        "lowestThreePlusPutts": ("Fewest 3-Putts",    "noOfThreePlusPutts"),
+        "mostBirdies":        ("Most Birdies",        "noOfBirdies"),
+        "mostPars":           ("Most Pars",           "noOfPars"),
+        "fewestBogies":       ("Fewest Bogeys",       "noOfBogies"),
+        "fewestDoubleBogies": ("Fewest Doubles",      "noOfDoubleBogies"),
+        "fairwayPct":         ("Best Fairway %",      "fairwayPct", "%"),
+        "girPct":             ("Best GIR %",          "girPct", "%"),
+        "puttsPerGir":        ("Best Putts/GIR",      "noOfPuttsPerGir"),
+        "mostUpDowns":        ("Most Up & Downs",     "noOfUpDownSuccesses"),
+        "mostSandSaves":      ("Most Sand Saves",     "noOfSandSaveSuccesses"),
+        "fastestRound":       ("Fastest Round",       "roundTime", "ms"),
+        "userHcp":            ("Best Handicap",       "userHcp", "hcp"),
+        "driveHcp":           ("Best Drive HCP",      "driveHcp", "hcp"),
+        "approachHcp":        ("Best Approach HCP",   "approachHcp", "hcp"),
+        "chipHcp":            ("Best Short Game HCP", "chipHcp", "hcp"),
+        "sandHcp":            ("Best Sand HCP",       "sandHcp", "hcp"),
+        "puttHcp":            ("Best Putt HCP",       "puttHcp", "hcp"),
     }
 
-    for item in items:
-        if not isinstance(item, dict):
+    for ach in achievements:
+        if not isinstance(ach, dict):
             continue
-        for key, (label, fmt_fn) in BEST_LABELS.items():
-            val = item.get(key)
-            if val is not None:
-                detail = ""
-                # Check for associated round/date info
-                date_key = f"{key}Date"
-                if item.get(date_key):
-                    detail = str(item[date_key])[:10]
-                table.add_row(label, fmt_fn(val), detail)
+        name = ach.get("name", "")
+        stats = ach.get("stats", {})
+        info = BEST_LABELS.get(name)
+        if info:
+            label = info[0]
+            stat_key = info[1]
+            unit = info[2] if len(info) > 2 else ""
+            val = stats.get(stat_key)
+            if val is None:
+                continue
+            if unit == "y":
+                display = f"{val:.0f}y"
+            elif unit == "%":
+                display = f"{val * 100:.1f}%"
+            elif unit == "ms":
+                mins = int(val / 1000 / 60)
+                display = f"{mins // 60}h {mins % 60}m"
+            elif unit == "hcp":
+                display = f"{val:.1f}"
+            else:
+                display = str(int(val)) if isinstance(val, float) and val == int(val) else str(val)
+        else:
+            # Unknown achievement — show raw
+            label = name
+            first_val = next(iter(stats.values()), None) if stats else None
+            display = str(first_val) if first_val is not None else "—"
 
-    # Also show any unlabeled numeric bests
-    shown_keys = set(BEST_LABELS.keys())
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        for k, v in item.items():
-            if k not in shown_keys and isinstance(v, (int, float)) and not k.endswith("Date"):
-                shown_keys.add(k)
-                table.add_row(k, str(v), "")
+        course_name = ach.get("course", {}).get("name", "")
+        date = ach.get("timestamp", "")[:10]
+        table.add_row(label, display, course_name, date)
 
     if table.row_count == 0:
         console.print("[dim]No personal bests data available.[/dim]")
@@ -884,58 +929,68 @@ def bests(as_json: bool):
 # ---------------------------------------------------------------------------
 
 @cli.command()
+@click.option("--limit", "-n", default=20, show_default=True,
+              help="Number of recent rounds to compute averages from.")
 @click.option("--json", "as_json", is_flag=True, help="Output raw JSON.")
-def overview(as_json: bool):
-    """Show overall performance stats (GIR%, FIR%, putts/round)."""
+def overview(limit: int, as_json: bool):
+    """Show overall performance summary from recent rounds and handicap."""
     client = _get_client()
 
-    with console.status("Fetching overall stats\u2026"):
-        data = client.stats.overall_stats()
+    with console.status("Fetching stats\u2026"):
+        hcp_data = client.handicap.current()
+        rounds_data = client.rounds.list(limit=limit)
+
+    # Compute scoring stats from rounds
+    scored = [r for r in rounds_data if r.get("noOfShots") and r.get("noOfHoles") == 18]
+    stats: dict = {}
+    if scored:
+        scores = [r["noOfShots"] for r in scored]
+        stats["scoringAvg"] = sum(scores) / len(scores)
+        stats["bestScore"] = min(scores)
+        stats["worstScore"] = max(scores)
+        stats["roundsPlayed"] = len(scored)
+
+    # Add handicap breakdown
+    if isinstance(hcp_data, dict):
+        stats["handicap"] = hcp_data
 
     if as_json:
-        _output_json(data)
+        _output_json(stats)
         return
 
-    if not data:
+    if not stats:
         console.print("[dim]No stats available.[/dim]")
         return
-
-    STAT_LABELS = {
-        "girPct":         ("GIR %",            "%"),
-        "firPct":         ("Fairway %",        "%"),
-        "puttsPerRound":  ("Putts / Round",    ""),
-        "puttsPerGir":    ("Putts / GIR",      ""),
-        "scoringAvg":     ("Scoring Avg",      ""),
-        "drivingDistance": ("Driving Distance", "y"),
-        "scramblePct":    ("Scramble %",       "%"),
-        "sandSavePct":    ("Sand Save %",      "%"),
-        "penaltyPerRound": ("Penalties / Round", ""),
-    }
 
     table = Table(
         box=box.ROUNDED,
         header_style="bold cyan",
-        title="[bold]Overall Performance[/bold]",
+        title=f"[bold]Performance Overview[/bold] [dim](last {len(scored)} rounds)[/dim]",
     )
     table.add_column("Stat", style="white bold")
     table.add_column("Value", justify="right", style="bold")
 
-    for key, (label, unit) in STAT_LABELS.items():
-        val = data.get(key)
-        if val is None:
-            continue
-        if unit == "%":
-            table.add_row(label, f"{val:.1f}%")
-        elif unit == "y":
-            table.add_row(label, f"{val:.0f}y")
-        else:
-            table.add_row(label, f"{val:.1f}" if isinstance(val, float) else str(val))
+    if "scoringAvg" in stats:
+        table.add_row("Scoring Average", f"{stats['scoringAvg']:.1f}")
+        table.add_row("Best Score", str(stats["bestScore"]))
+        table.add_row("Worst Score", str(stats["worstScore"]))
+        table.add_row("Rounds Played", str(stats["roundsPlayed"]))
 
-    if table.row_count == 0:
-        # Fallback: show all numeric fields
-        for k, v in data.items():
-            if isinstance(v, (int, float)):
-                table.add_row(k, f"{v:.1f}" if isinstance(v, float) else str(v))
+    # Handicap section
+    if "handicap" in stats:
+        h = stats["handicap"]
+        HCP_FIELDS = [
+            ("userHcp", "Overall HCP"),
+            ("driveHcp", "Driving HCP"),
+            ("approachHcp", "Approach HCP"),
+            ("chipHcp", "Short Game HCP"),
+            ("sandHcp", "Sand HCP"),
+            ("puttHcp", "Putting HCP"),
+        ]
+        for key, label in HCP_FIELDS:
+            val = h.get(key)
+            if val is not None:
+                table.add_row(label, f"{val:+.1f}" if isinstance(val, float) else str(val))
 
     console.print(table)
 
@@ -954,7 +1009,7 @@ def scoring(limit: int, as_json: bool):
 
     with console.status(f"Fetching last {limit} rounds\u2026"):
         data = client.rounds.list(limit=limit)
-        course_map = _build_course_map(client)
+        course_map, par_map = _build_course_map(client)
 
     if as_json:
         _output_json(data)
@@ -998,8 +1053,8 @@ def scoring(limit: int, as_json: bool):
     for r in scored:
         date = r.get("startTime", "")[:10]
         sc = r["noOfShots"]
-        ou = r.get("overUnder")
-        ou_s = f"{ou:+d}" if ou is not None else ""
+        par = par_map.get(r.get("courseId"))
+        ou_s = f"{sc - par:+d}" if par else ""
         cname = course_map.get(r.get("courseId"), "")
 
         # Visual bar: green below avg, red above

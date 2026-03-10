@@ -512,10 +512,10 @@ class TestRoundsWithCourseNames:
         client = _mock_client()
         client.rounds.list.return_value = [
             {"roundId": 1, "courseId": 100, "startTime": "2025-06-01T08:00:00.000Z",
-             "noOfShots": 85, "noOfHoles": 18, "overUnder": 13},
+             "noOfShots": 85, "noOfHoles": 18},
         ]
         client.courses.played.return_value = [
-            {"courseId": 100, "courseName": "Pebble Beach"},
+            {"courseId": 100, "courseName": "Pebble Beach", "mensPar": 72},
         ]
         mock_get.return_value = client
 
@@ -534,8 +534,8 @@ class TestRoundsWithCourseNames:
              "noOfShots": 78, "noOfHoles": 18},
         ]
         client.courses.played.return_value = [
-            {"courseId": 100, "courseName": "Pebble Beach"},
-            {"courseId": 200, "courseName": "Augusta National"},
+            {"courseId": 100, "courseName": "Pebble Beach", "mensPar": 72},
+            {"courseId": 200, "courseName": "Augusta National", "mensPar": 72},
         ]
         mock_get.return_value = client
 
@@ -552,7 +552,7 @@ class TestRoundsWithCourseNames:
              "noOfShots": 85, "noOfHoles": 18},
         ]
         client.courses.played.return_value = [
-            {"courseId": 100, "courseName": "Pebble Beach"},
+            {"courseId": 100, "courseName": "Pebble Beach", "mensPar": 72},
         ]
         mock_get.return_value = client
 
@@ -570,10 +570,14 @@ class TestBestsCommand:
     def test_bests_table(self, mock_get, runner):
         client = _mock_client()
         client.stats.personal_bests.return_value = {
-            "lowestScore": 72,
-            "longestDrive": 305.4,
-            "fewestPutts": 28,
-            "mostBirdies": 5,
+            "achievements": [
+                {"name": "lowestScore", "stats": {"noOfShots": 72, "par": 72},
+                 "course": {"name": "Pebble Beach"}, "timestamp": "2025-06-01T00:00:00.000Z"},
+                {"name": "longestDrive", "stats": {"driveDistance": 305.4},
+                 "course": {"name": "Augusta"}, "timestamp": "2025-07-01T00:00:00.000Z"},
+                {"name": "bestRoundPutting", "stats": {"noOfPutts": 28},
+                 "course": {"name": "TPC"}, "timestamp": "2025-08-01T00:00:00.000Z"},
+            ],
         }
         mock_get.return_value = client
 
@@ -586,17 +590,17 @@ class TestBestsCommand:
     @patch("arccos.cli._get_client")
     def test_bests_json(self, mock_get, runner):
         client = _mock_client()
-        client.stats.personal_bests.return_value = {"lowestScore": 72}
+        client.stats.personal_bests.return_value = {"achievements": [{"name": "lowestScore"}]}
         mock_get.return_value = client
 
         result = runner.invoke(cli, ["bests", "--json"])
         data = json.loads(result.output)
-        assert data["lowestScore"] == 72
+        assert "achievements" in data
 
     @patch("arccos.cli._get_client")
     def test_bests_empty(self, mock_get, runner):
         client = _mock_client()
-        client.stats.personal_bests.return_value = {}
+        client.stats.personal_bests.return_value = {"achievements": []}
         mock_get.return_value = client
 
         result = runner.invoke(cli, ["bests"])
@@ -611,29 +615,35 @@ class TestOverviewCommand:
     @patch("arccos.cli._get_client")
     def test_overview_table(self, mock_get, runner):
         client = _mock_client()
-        client.stats.overall_stats.return_value = {
-            "girPct": 44.2,
-            "firPct": 55.8,
-            "puttsPerRound": 32.1,
-            "scoringAvg": 84.3,
+        client.handicap.current.return_value = {
+            "userHcp": -15.2, "driveHcp": -10.1, "approachHcp": -20.3,
+            "chipHcp": -12.0, "sandHcp": -5.5, "puttHcp": -8.0,
         }
+        client.rounds.list.return_value = [
+            {"roundId": 1, "noOfShots": 85, "noOfHoles": 18},
+            {"roundId": 2, "noOfShots": 80, "noOfHoles": 18},
+            {"roundId": 3, "noOfShots": 78, "noOfHoles": 18},
+        ]
         mock_get.return_value = client
 
         result = runner.invoke(cli, ["overview"])
         assert result.exit_code == 0
-        assert "44.2%" in result.output
-        assert "55.8%" in result.output
-        assert "32.1" in result.output
+        assert "81.0" in result.output  # scoring avg
+        assert "78" in result.output    # best
+        assert "85" in result.output    # worst
 
     @patch("arccos.cli._get_client")
     def test_overview_json(self, mock_get, runner):
         client = _mock_client()
-        client.stats.overall_stats.return_value = {"girPct": 44.2}
+        client.handicap.current.return_value = {"userHcp": -15.2}
+        client.rounds.list.return_value = [
+            {"roundId": 1, "noOfShots": 85, "noOfHoles": 18},
+        ]
         mock_get.return_value = client
 
         result = runner.invoke(cli, ["overview", "--json"])
         data = json.loads(result.output)
-        assert data["girPct"] == 44.2
+        assert data["scoringAvg"] == 85.0
 
 
 # ---------------------------------------------------------------------------
