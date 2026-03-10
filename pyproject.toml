@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "arccos-api"
-version = "0.1.3"
+version = "0.1.4"
 description = "Unofficial Python CLI and client library for the Arccos Golf API"
 readme = "README.md"
 license = {text = "MIT"}
