@@ -646,18 +646,70 @@ components:
       type: object
       description: Smart distance data for a single club
       properties:
-        clubType:
-          type: string
-          example: "Driver"
-        averageDistance:
-          type: number
-          description: Average carry distance in yards
-        smartDistance:
-          type: number
-          description: Recommended "smart" carry distance (outliers removed)
-        totalShots:
+        clubId:
           type: integer
-          description: Total tracked shots for this club
+          description: Bag-specific club ID (cross-reference with bag endpoint for club name)
+          example: 1
+        smartDistance:
+          type: object
+          description: Arccos-filtered carry distance (outliers removed)
+          properties:
+            distance: {type: number, example: 252.3}
+            unit: {type: string, example: "yd"}
+        normalizedSmartDistance:
+          type: object
+          properties:
+            distance: {type: number}
+            unit: {type: string}
+        terrain:
+          type: object
+          description: Per-terrain distance breakdowns
+          properties:
+            tee:
+              type: object
+              nullable: true
+              properties:
+                distance: {type: number, example: 265.1}
+                unit: {type: string, example: "yd"}
+                diff: {type: number}
+            fairway:
+              type: object
+              nullable: true
+              properties:
+                distance: {type: number}
+                unit: {type: string}
+                diff: {type: number}
+            rough:
+              type: object
+              nullable: true
+              properties:
+                distance: {type: number}
+                unit: {type: string}
+                diff: {type: number}
+            sand:
+              type: object
+              nullable: true
+              properties:
+                distance: {type: number}
+                unit: {type: string}
+                diff: {type: number}
+        usage:
+          type: object
+          properties:
+            count: {type: integer, example: 312}
+        longest:
+          type: object
+          properties:
+            distance: {type: number, example: 291.0}
+            unit: {type: string, example: "yd"}
+        range:
+          type: object
+          properties:
+            low: {type: number, example: 245.0}
+            high: {type: number, example: 263.0}
+            unit: {type: string, example: "yd"}
+        gir:
+          nullable: true
       additionalProperties: true
 
     Shot:
@@ -672,7 +724,7 @@ components:
           type: integer
         courseName:
           type: string
-          example: "Las Vegas Golf Club"
+          example: "Torrey Pines Golf Course"
         city:
           type: string
         state:
