@@ -35,7 +35,7 @@ mypy arccos/
 - **`ArccosClient`**: Main entry point. Initializes auth + HTTP client + resource objects.
 - **`HttpClient` (`_http.py`)**: Wraps `requests.Session`. Auto-refreshes JWT, maps errors to typed exceptions.
 - **Resources** (`resources/`): One class per API domain (rounds, handicap, clubs, courses, stats). Each takes an `HttpClient` and `user_id`.
-- **CLI** (`cli.py`): Click commands with Rich formatting. Uses `_get_client()` helper to build authenticated client from env vars or cached creds.
+- **CLI** (`cli.py`): Click commands with Rich formatting. Uses `_get_client()` helper to build authenticated client from env vars or cached creds. Commands: `login`, `rounds`, `round`, `handicap`, `clubs`, `bests`, `overview`, `scoring`, `courses`, `pace`, `stats`, `export`, `logout`.
 - **Exceptions** (`exceptions.py`): Hierarchy — `ArccosError` → `ArccosAuthError`, `ArccosNotFoundError`, `ArccosRateLimitError`, `ArccosForbiddenError`.
 
 ## Key conventions
@@ -43,6 +43,9 @@ mypy arccos/
 - All tests mock the HTTP layer (no real API calls)
 - Resources return raw dicts/lists from the API — no custom data classes
 - CLI commands all support `--json` for raw JSON output
+- `_build_course_map(client)` returns `(name_map, par_map)` — used to resolve courseId → name and compute +/- from `mensPar`
+- The API has no `overUnder` or `courseName` in round data — these are computed client-side
+- Personal bests API returns `{"achievements": [...]}` with nested `stats`, `course`, `timestamp`
 - Mutable default args use `X | None = None` (not bare `None`)
 - Build backend: `setuptools.build_meta`
 - Python target: 3.11+

@@ -42,14 +42,17 @@ arccos clubs       # smart club distances
 | Command | Description |
 |---------|-------------|
 | `arccos login` | Authenticate and cache credentials to `~/.arccos_creds.json` |
-| `arccos rounds` | List recent rounds with date, score, holes, course |
+| `arccos rounds` | List recent rounds with date, score, +/-, course name |
 | `arccos round <id>` | Hole-by-hole detail (score, putts, FIR, GIR) with totals |
 | `arccos handicap` | Handicap breakdown by category (overall, driving, approach, etc.) |
 | `arccos clubs` | Smart club distances with make/model, range, and shot count |
+| `arccos bests` | All-time personal bests (lowest score, longest drive, etc.) |
+| `arccos overview` | Performance summary — scoring avg + handicap breakdown |
+| `arccos scoring` | Scoring trend with visual bar chart |
 | `arccos courses` | List all courses you've played |
 | `arccos pace` | Pace of play analysis by course (color-coded) |
 | `arccos stats <id>` | Strokes gained analysis for a round |
-| `arccos export` | Export rounds to JSON, CSV, or NDJSON |
+| `arccos export` | Export rounds to JSON, CSV, or NDJSON (`--detail` for hole data) |
 | `arccos logout` | Clear cached credentials |
 
 Every command supports `--json` for raw JSON output and `--help` for usage info.
@@ -58,9 +61,10 @@ Every command supports `--json` for raw JSON output and `--help` for usage info.
 
 ```bash
 # Rounds
-arccos rounds                         # last 20 rounds
+arccos rounds                         # last 20 rounds (with +/- and course names)
 arccos rounds -n 50                   # last 50
 arccos rounds --after 2025-01-01      # filter by date
+arccos rounds --course "pebble"       # filter by course name (substring)
 arccos rounds --json                  # raw JSON
 
 # Round detail
@@ -74,6 +78,11 @@ arccos handicap --history             # revision history
 arccos clubs                          # active clubs with make/model
 arccos clubs --after 2025-01-01       # distances from this year only
 
+# Performance
+arccos bests                          # all-time personal bests
+arccos overview                       # scoring avg + handicap breakdown
+arccos scoring                        # scoring trend with bar chart
+
 # Courses
 arccos courses                        # all courses played
 
@@ -83,6 +92,7 @@ arccos pace -n 20                     # last 20 rounds only
 
 # Export
 arccos export -f csv -o rounds.csv    # export to CSV file
+arccos export --detail                # include hole-by-hole data
 arccos export -f json                 # dump JSON to stdout
 arccos export -f ndjson               # newline-delimited JSON
 ```
@@ -203,7 +213,7 @@ for club in bag["clubs"]:
 
 # Courses played
 for course in client.courses.played():
-    print(f"  {course.get('courseName', course['courseId'])}")
+    print(f"  {course.get('name', course['courseId'])}")
 
 # Pace of play analysis
 pace = client.rounds.pace_of_play()
@@ -255,12 +265,11 @@ All data calls go to `https://api.arccosgolf.com` with `Authorization: Bearer <t
 {
   "roundId": 18294051,
   "courseId": 12450,
-  "courseName": "Torrey Pines",
+  "courseVersion": 4,
   "startTime": "2025-09-14T15:30:00.000000Z",
   "endTime": "2025-09-14T20:15:00.000000Z",
   "noOfShots": 79,
   "noOfHoles": 18,
-  "overUnder": 7,
   "holes": [
     {
       "holeId": 1, "noOfShots": 4, "putts": 2,
@@ -300,7 +309,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-pytest                  # tests with coverage (90%+, 96 tests)
+pytest                  # tests with coverage (88%+, 125 tests)
 ruff check arccos/      # lint
 mypy arccos/            # type check
 ```
