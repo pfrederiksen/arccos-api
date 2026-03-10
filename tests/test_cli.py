@@ -23,6 +23,8 @@ def _mock_client():
     client = MagicMock()
     client.email = "test@example.com"
     client.user_id = "user-123"
+    # Default: courses.played returns empty (used by _build_course_map)
+    client.courses.played.return_value = []
     return client
 
 
@@ -498,3 +500,207 @@ class TestHelpCommand:
         result = runner.invoke(cli, ["--help"])
         assert result.exit_code == 0
         assert "arccos" in result.output
+
+
+# ---------------------------------------------------------------------------
+# rounds with course names
+# ---------------------------------------------------------------------------
+
+class TestRoundsWithCourseNames:
+    @patch("arccos.cli._get_client")
+    def test_rounds_show_course_name(self, mock_get, runner):
+        client = _mock_client()
+        client.rounds.list.return_value = [
+            {"roundId": 1, "courseId": 100, "startTime": "2025-06-01T08:00:00.000Z",
+             "noOfShots": 85, "noOfHoles": 18, "overUnder": 13},
+        ]
+        client.courses.played.return_value = [
+            {"courseId": 100, "courseName": "Pebble Beach"},
+        ]
+        mock_get.return_value = client
+
+        result = runner.invoke(cli, ["rounds"])
+        assert result.exit_code == 0
+        assert "Pebble Beach" in result.output
+        assert "+13" in result.output
+
+    @patch("arccos.cli._get_client")
+    def test_rounds_course_filter(self, mock_get, runner):
+        client = _mock_client()
+        client.rounds.list.return_value = [
+            {"roundId": 1, "courseId": 100, "startTime": "2025-06-01T08:00:00.000Z",
+             "noOfShots": 85, "noOfHoles": 18},
+            {"roundId": 2, "courseId": 200, "startTime": "2025-06-02T08:00:00.000Z",
+             "noOfShots": 78, "noOfHoles": 18},
+        ]
+        client.courses.played.return_value = [
+            {"courseId": 100, "courseName": "Pebble Beach"},
+            {"courseId": 200, "courseName": "Augusta National"},
+        ]
+        mock_get.return_value = client
+
+        result = runner.invoke(cli, ["rounds", "--course", "pebble"])
+        assert result.exit_code == 0
+        assert "Pebble Beach" in result.output
+        assert "Augusta" not in result.output
+
+    @patch("arccos.cli._get_client")
+    def test_rounds_course_filter_no_match(self, mock_get, runner):
+        client = _mock_client()
+        client.rounds.list.return_value = [
+            {"roundId": 1, "courseId": 100, "startTime": "2025-06-01T08:00:00.000Z",
+             "noOfShots": 85, "noOfHoles": 18},
+        ]
+        client.courses.played.return_value = [
+            {"courseId": 100, "courseName": "Pebble Beach"},
+        ]
+        mock_get.return_value = client
+
+        result = runner.invoke(cli, ["rounds", "--course", "xyz"])
+        assert result.exit_code == 0
+        assert "No rounds found matching" in result.output
+
+
+# ---------------------------------------------------------------------------
+# bests
+# ---------------------------------------------------------------------------
+
+class TestBestsCommand:
+    @patch("arccos.cli._get_client")
+    def test_bests_table(self, mock_get, runner):
+        client = _mock_client()
+        client.stats.personal_bests.return_value = {
+            "lowestScore": 72,
+            "longestDrive": 305.4,
+            "fewestPutts": 28,
+            "mostBirdies": 5,
+        }
+        mock_get.return_value = client
+
+        result = runner.invoke(cli, ["bests"])
+        assert result.exit_code == 0
+        assert "72" in result.output
+        assert "305y" in result.output
+        assert "28" in result.output
+
+    @patch("arccos.cli._get_client")
+    def test_bests_json(self, mock_get, runner):
+        client = _mock_client()
+        client.stats.personal_bests.return_value = {"lowestScore": 72}
+        mock_get.return_value = client
+
+        result = runner.invoke(cli, ["bests", "--json"])
+        data = json.loads(result.output)
+        assert data["lowestScore"] == 72
+
+    @patch("arccos.cli._get_client")
+    def test_bests_empty(self, mock_get, runner):
+        client = _mock_client()
+        client.stats.personal_bests.return_value = {}
+        mock_get.return_value = client
+
+        result = runner.invoke(cli, ["bests"])
+        assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# overview
+# ---------------------------------------------------------------------------
+
+class TestOverviewCommand:
+    @patch("arccos.cli._get_client")
+    def test_overview_table(self, mock_get, runner):
+        client = _mock_client()
+        client.stats.overall_stats.return_value = {
+            "girPct": 44.2,
+            "firPct": 55.8,
+            "puttsPerRound": 32.1,
+            "scoringAvg": 84.3,
+        }
+        mock_get.return_value = client
+
+        result = runner.invoke(cli, ["overview"])
+        assert result.exit_code == 0
+        assert "44.2%" in result.output
+        assert "55.8%" in result.output
+        assert "32.1" in result.output
+
+    @patch("arccos.cli._get_client")
+    def test_overview_json(self, mock_get, runner):
+        client = _mock_client()
+        client.stats.overall_stats.return_value = {"girPct": 44.2}
+        mock_get.return_value = client
+
+        result = runner.invoke(cli, ["overview", "--json"])
+        data = json.loads(result.output)
+        assert data["girPct"] == 44.2
+
+
+# ---------------------------------------------------------------------------
+# scoring
+# ---------------------------------------------------------------------------
+
+class TestScoringCommand:
+    @patch("arccos.cli._get_client")
+    def test_scoring_trend(self, mock_get, runner):
+        client = _mock_client()
+        client.rounds.list.return_value = [
+            {"roundId": 1, "courseId": 100, "startTime": "2025-06-01T08:00:00.000Z",
+             "noOfShots": 85, "noOfHoles": 18, "overUnder": 13},
+            {"roundId": 2, "courseId": 100, "startTime": "2025-06-02T08:00:00.000Z",
+             "noOfShots": 80, "noOfHoles": 18, "overUnder": 8},
+            {"roundId": 3, "courseId": 100, "startTime": "2025-06-03T08:00:00.000Z",
+             "noOfShots": 78, "noOfHoles": 18, "overUnder": 6},
+        ]
+        mock_get.return_value = client
+
+        result = runner.invoke(cli, ["scoring"])
+        assert result.exit_code == 0
+        assert "81.0" in result.output  # avg of 85+80+78
+        assert "78" in result.output    # best
+        assert "85" in result.output    # worst
+
+    @patch("arccos.cli._get_client")
+    def test_scoring_no_18_hole_rounds(self, mock_get, runner):
+        client = _mock_client()
+        client.rounds.list.return_value = [
+            {"roundId": 1, "courseId": 100, "startTime": "2025-06-01T08:00:00.000Z",
+             "noOfShots": 42, "noOfHoles": 9},
+        ]
+        mock_get.return_value = client
+
+        result = runner.invoke(cli, ["scoring"])
+        assert result.exit_code == 0
+        assert "No 18-hole rounds" in result.output
+
+    @patch("arccos.cli._get_client")
+    def test_scoring_json(self, mock_get, runner):
+        client = _mock_client()
+        client.rounds.list.return_value = [{"roundId": 1}]
+        mock_get.return_value = client
+
+        result = runner.invoke(cli, ["scoring", "--json"])
+        data = json.loads(result.output)
+        assert data[0]["roundId"] == 1
+
+
+# ---------------------------------------------------------------------------
+# export with --detail
+# ---------------------------------------------------------------------------
+
+class TestExportDetailFlag:
+    @patch("arccos.cli._get_client")
+    def test_export_detail_json(self, mock_get, runner):
+        client = _mock_client()
+        client.rounds.list.return_value = [{"roundId": 1, "noOfShots": 85}]
+        client.rounds.get.return_value = {
+            "roundId": 1,
+            "holes": [{"holeId": 1, "noOfShots": 4}],
+        }
+        mock_get.return_value = client
+
+        result = runner.invoke(cli, ["export", "--detail"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "holes" in data[0]
+        assert data[0]["holes"][0]["holeId"] == 1

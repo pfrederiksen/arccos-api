@@ -59,6 +59,34 @@ def _flag(minutes: int) -> str:
     return "\U0001f7e2"
 
 
+def _build_course_map(client) -> dict[int, str]:
+    """Build a courseId → courseName lookup from the user's played courses."""
+    try:
+        played = client.courses.played()
+        return {
+            c["courseId"]: c.get("courseName") or c.get("name") or f"Course {c['courseId']}"
+            for c in played
+        }
+    except Exception:
+        return {}
+
+
+def _score_color(score: int, par: int | None) -> str:
+    """Return a Rich color string based on score relative to par."""
+    if par is None:
+        return "bold"
+    diff = score - par
+    if diff <= -2:
+        return "bold yellow"  # eagle or better
+    if diff == -1:
+        return "bold green"   # birdie
+    if diff == 0:
+        return "white"        # par
+    if diff == 1:
+        return "red"          # bogey
+    return "bold red"         # double+
+
+
 # ---------------------------------------------------------------------------
 # CLI group
 # ---------------------------------------------------------------------------
@@ -80,6 +108,9 @@ def cli():
       arccos courses               Courses you've played
       arccos pace                  Pace of play by course
       arccos stats                 Strokes gained analysis
+      arccos bests                 Personal bests (all-time records)
+      arccos overview              Overall stats (GIR%, FIR%, putts)
+      arccos scoring               Scoring trend over recent rounds
       arccos export                Export rounds to JSON/CSV
       arccos logout                Clear cached credentials
 
@@ -125,8 +156,9 @@ def login(email: str, password: str):
 @click.option("--offset", "-o", default=0,         show_default=True, help="Pagination offset.")
 @click.option("--after",  "-a", default=None,      help="Show rounds after date (YYYY-MM-DD).")
 @click.option("--before", "-b", default=None,      help="Show rounds before date (YYYY-MM-DD).")
+@click.option("--course", "-c", default=None,      help="Filter by course name (substring match).")
 @click.option("--json",   "as_json", is_flag=True, help="Output raw JSON.")
-def rounds(limit: int, offset: int, after: str, before: str, as_json: bool):
+def rounds(limit: int, offset: int, after: str, before: str, course: str, as_json: bool):
     """List your recent golf rounds."""
     client = _get_client()
 
@@ -135,6 +167,7 @@ def rounds(limit: int, offset: int, after: str, before: str, as_json: bool):
             limit=limit, offset=offset,
             after_date=after, before_date=before,
         )
+        course_map = _build_course_map(client)
 
     if as_json:
         _output_json(data)
@@ -144,25 +177,39 @@ def rounds(limit: int, offset: int, after: str, before: str, as_json: bool):
         console.print("[dim]No rounds found.[/dim]")
         return
 
+    # Client-side course name filter (case-insensitive substring)
+    if course:
+        needle = course.lower()
+        data = [
+            r for r in data
+            if needle in (course_map.get(r.get("courseId"), "")).lower()
+        ]
+        if not data:
+            console.print(f"[dim]No rounds found matching \"{course}\".[/dim]")
+            return
+
     table = Table(
         box=box.ROUNDED,
         show_header=True,
         header_style="bold cyan",
         title=f"[bold]Rounds[/bold] [dim]({len(data)} shown)[/dim]",
     )
-    table.add_column("Date",      style="white",  no_wrap=True)
-    table.add_column("Score",     style="bold",   justify="right")
-    table.add_column("Holes",     justify="right")
-    table.add_column("Course ID", justify="right", style="dim")
-    table.add_column("Round ID",  justify="right", style="dim")
+    table.add_column("Date",    style="white",  no_wrap=True)
+    table.add_column("Score",   style="bold",   justify="right")
+    table.add_column("+/-",     justify="right")
+    table.add_column("Holes",   justify="right")
+    table.add_column("Course")
+    table.add_column("ID",      justify="right", style="dim")
 
     for r in data:
         date  = r.get("startTime", "")[:10]
         score = str(r.get("noOfShots", "\u2014"))
+        ou    = r.get("overUnder")
+        ou_s  = f"{ou:+d}" if ou is not None else ""
         holes = str(r.get("noOfHoles", "\u2014"))
-        cid   = str(r.get("courseId", "\u2014"))
+        cname = course_map.get(r.get("courseId"), str(r.get("courseId", "\u2014")))
         rid   = str(r.get("roundId", "\u2014"))
-        table.add_row(date, score, holes, cid, rid)
+        table.add_row(date, score, ou_s, holes, cname, rid)
 
     console.print(table)
 
@@ -560,6 +607,16 @@ def round_detail(round_id: int, as_json: bool):
 
     with console.status(f"Fetching round {round_id}\u2026"):
         meta = client.rounds.get(round_id)
+        # Try to get par data from the course
+        par_map: dict[int, int] = {}
+        course_id = meta.get("courseId")
+        if course_id:
+            try:
+                course = client.courses.get(course_id)
+                for h in course.get("holes", []):
+                    par_map[h["holeId"]] = h.get("par", 0)
+            except Exception:
+                pass
 
     if as_json:
         _output_json(meta)
@@ -591,6 +648,7 @@ def round_detail(round_id: int, as_json: bool):
         console.print("[dim]No hole data available.[/dim]")
         return
 
+    has_par = bool(par_map)
     table = Table(
         box=box.ROUNDED,
         show_header=True,
@@ -598,6 +656,8 @@ def round_detail(round_id: int, as_json: bool):
         title="[bold]Hole-by-Hole[/bold]",
     )
     table.add_column("Hole", justify="right")
+    if has_par:
+        table.add_column("Par", justify="right", style="dim")
     table.add_column("Score", justify="right", style="bold")
     table.add_column("Putts", justify="right")
     table.add_column("FIR", justify="center")
@@ -605,20 +665,27 @@ def round_detail(round_id: int, as_json: bool):
 
     total_score = 0
     total_putts = 0
+    total_par = 0
     for h in holes:
-        hole_num = str(h.get("holeId", "\u2014"))
+        hole_num = h.get("holeId", 0)
         sc = h.get("noOfShots")
         putts = h.get("putts")
         fir = h.get("isFairWay", "\u2014")
         gir = h.get("isGir", "\u2014")
-
-        score_str = str(sc) if sc is not None else "\u2014"
-        putts_str = str(putts) if putts is not None else "\u2014"
+        par = par_map.get(hole_num)
 
         if sc is not None:
+            color = _score_color(sc, par)
+            score_str = f"[{color}]{sc}[/{color}]"
             total_score += sc
+        else:
+            score_str = "\u2014"
+
+        putts_str = str(putts) if putts is not None else "\u2014"
         if putts is not None:
             total_putts += putts
+        if par is not None:
+            total_par += par
 
         # Color FIR/GIR: T=green, F=red
         if fir == "T":
@@ -630,16 +697,23 @@ def round_detail(round_id: int, as_json: bool):
         elif gir == "F":
             gir = "[red]F[/red]"
 
-        table.add_row(hole_num, score_str, putts_str, fir, gir)
+        row = [str(hole_num)]
+        if has_par:
+            row.append(str(par) if par else "\u2014")
+        row.extend([score_str, putts_str, fir, gir])
+        table.add_row(*row)
 
     # Totals row
     table.add_section()
-    table.add_row(
-        "[bold]Tot[/bold]",
+    tot_row = ["[bold]Tot[/bold]"]
+    if has_par:
+        tot_row.append(f"[bold]{total_par}[/bold]" if total_par else "")
+    tot_row.extend([
         f"[bold]{total_score}[/bold]",
         f"[bold]{total_putts}[/bold]",
         "", "",
-    )
+    ])
+    table.add_row(*tot_row)
 
     console.print(table)
 
@@ -677,7 +751,8 @@ def logout():
               type=click.Choice(["json", "csv", "ndjson"]), default="json",
               show_default=True, help="Output format.")
 @click.option("--output", "-o",  default="-",     help="Output file path (default: stdout).")
-def export(limit: int, fmt: str, output: str):
+@click.option("--detail", "-d",  is_flag=True,    help="Include hole-by-hole data per round.")
+def export(limit: int, fmt: str, output: str, detail: bool):
     """Export round data to JSON or CSV."""
     import csv
 
@@ -690,6 +765,15 @@ def export(limit: int, fmt: str, output: str):
         err_console.print("[red]No rounds found.[/red]")
         sys.exit(1)
 
+    if detail:
+        with console.status(f"Fetching hole data for {len(data)} rounds\u2026"):
+            for r in data:
+                try:
+                    full = client.rounds.get(r["roundId"])
+                    r["holes"] = full.get("holes", [])
+                except Exception:
+                    r["holes"] = []
+
     def _write(out):
         if fmt == "json":
             json.dump(data, out, indent=2)
@@ -699,18 +783,233 @@ def export(limit: int, fmt: str, output: str):
                 out.write(json.dumps(r) + "\n")
         elif fmt == "csv":
             if data:
-                writer = csv.DictWriter(out, fieldnames=data[0].keys(), extrasaction="ignore")
+                keys = list(data[0].keys())
+                # Exclude nested 'holes' from CSV (not tabular)
+                keys = [k for k in keys if k != "holes"]
+                writer = csv.DictWriter(
+                    out, fieldnames=keys, extrasaction="ignore",
+                )
                 writer.writeheader()
                 writer.writerows(data)
 
     if output == "-":
         _write(sys.stdout)
     else:
-        # Resolve symlinks to prevent symlink-based file overwrites
         out_path = os.path.realpath(output)
         with open(out_path, "w", newline="") as out:
             _write(out)
-        console.print(f"[green]\u2713[/green] Exported {len(data)} rounds to [bold]{output}[/bold]")
+        console.print(
+            f"[green]\u2713[/green] Exported {len(data)} rounds to [bold]{output}[/bold]"
+        )
+
+
+# ---------------------------------------------------------------------------
+# bests
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.option("--json", "as_json", is_flag=True, help="Output raw JSON.")
+def bests(as_json: bool):
+    """Show your all-time personal bests."""
+    client = _get_client()
+
+    with console.status("Fetching personal bests\u2026"):
+        data = client.stats.personal_bests()
+
+    if as_json:
+        _output_json(data)
+        return
+
+    if not data:
+        console.print("[dim]No personal bests found.[/dim]")
+        return
+
+    # personal_bests can be a dict or list — normalize
+    items = data if isinstance(data, list) else [data]
+
+    table = Table(
+        box=box.ROUNDED,
+        header_style="bold cyan",
+        title="[bold]Personal Bests[/bold]",
+    )
+    table.add_column("Record", style="white bold")
+    table.add_column("Value", justify="right", style="green bold")
+    table.add_column("Details", style="dim")
+
+    BEST_LABELS = {
+        "lowestScore":       ("Lowest Score",       lambda v: str(v)),
+        "lowestScore9":      ("Lowest 9-Hole",      lambda v: str(v)),
+        "longestDrive":      ("Longest Drive",      lambda v: f"{v:.0f}y" if v else str(v)),
+        "fewestPutts":       ("Fewest Putts",       lambda v: str(v)),
+        "fewestPutts9":      ("Fewest Putts (9)",   lambda v: str(v)),
+        "mostBirdies":       ("Most Birdies",       lambda v: str(v)),
+        "mostPars":          ("Most Pars",          lambda v: str(v)),
+        "streakPar":         ("Longest Par Streak", lambda v: str(v)),
+        "streakBirdie":      ("Birdie Streak",      lambda v: str(v)),
+        "longestPutt":       ("Longest Putt",       lambda v: f"{v:.0f}ft" if v else str(v)),
+    }
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for key, (label, fmt_fn) in BEST_LABELS.items():
+            val = item.get(key)
+            if val is not None:
+                detail = ""
+                # Check for associated round/date info
+                date_key = f"{key}Date"
+                if item.get(date_key):
+                    detail = str(item[date_key])[:10]
+                table.add_row(label, fmt_fn(val), detail)
+
+    # Also show any unlabeled numeric bests
+    shown_keys = set(BEST_LABELS.keys())
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for k, v in item.items():
+            if k not in shown_keys and isinstance(v, (int, float)) and not k.endswith("Date"):
+                shown_keys.add(k)
+                table.add_row(k, str(v), "")
+
+    if table.row_count == 0:
+        console.print("[dim]No personal bests data available.[/dim]")
+        return
+
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# overview
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.option("--json", "as_json", is_flag=True, help="Output raw JSON.")
+def overview(as_json: bool):
+    """Show overall performance stats (GIR%, FIR%, putts/round)."""
+    client = _get_client()
+
+    with console.status("Fetching overall stats\u2026"):
+        data = client.stats.overall_stats()
+
+    if as_json:
+        _output_json(data)
+        return
+
+    if not data:
+        console.print("[dim]No stats available.[/dim]")
+        return
+
+    STAT_LABELS = {
+        "girPct":         ("GIR %",            "%"),
+        "firPct":         ("Fairway %",        "%"),
+        "puttsPerRound":  ("Putts / Round",    ""),
+        "puttsPerGir":    ("Putts / GIR",      ""),
+        "scoringAvg":     ("Scoring Avg",      ""),
+        "drivingDistance": ("Driving Distance", "y"),
+        "scramblePct":    ("Scramble %",       "%"),
+        "sandSavePct":    ("Sand Save %",      "%"),
+        "penaltyPerRound": ("Penalties / Round", ""),
+    }
+
+    table = Table(
+        box=box.ROUNDED,
+        header_style="bold cyan",
+        title="[bold]Overall Performance[/bold]",
+    )
+    table.add_column("Stat", style="white bold")
+    table.add_column("Value", justify="right", style="bold")
+
+    for key, (label, unit) in STAT_LABELS.items():
+        val = data.get(key)
+        if val is None:
+            continue
+        if unit == "%":
+            table.add_row(label, f"{val:.1f}%")
+        elif unit == "y":
+            table.add_row(label, f"{val:.0f}y")
+        else:
+            table.add_row(label, f"{val:.1f}" if isinstance(val, float) else str(val))
+
+    if table.row_count == 0:
+        # Fallback: show all numeric fields
+        for k, v in data.items():
+            if isinstance(v, (int, float)):
+                table.add_row(k, f"{v:.1f}" if isinstance(v, float) else str(v))
+
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# scoring
+# ---------------------------------------------------------------------------
+
+@cli.command()
+@click.option("--limit", "-n", default=20, show_default=True,
+              help="Number of recent rounds to include.")
+@click.option("--json", "as_json", is_flag=True, help="Output raw JSON.")
+def scoring(limit: int, as_json: bool):
+    """Show scoring trend over recent rounds."""
+    client = _get_client()
+
+    with console.status(f"Fetching last {limit} rounds\u2026"):
+        data = client.rounds.list(limit=limit)
+        course_map = _build_course_map(client)
+
+    if as_json:
+        _output_json(data)
+        return
+
+    # Filter to 18-hole rounds with valid scores
+    scored = [
+        r for r in data
+        if r.get("noOfShots") and r.get("noOfHoles") == 18
+    ]
+
+    if not scored:
+        console.print("[dim]No 18-hole rounds found.[/dim]")
+        return
+
+    scores = [r["noOfShots"] for r in scored]
+    avg = sum(scores) / len(scores)
+    best = min(scores)
+    worst = max(scores)
+
+    # Summary
+    console.print(
+        f"\n[bold]Scoring Trend[/bold] [dim]({len(scored)} rounds)[/dim]\n"
+        f"  Average: [bold cyan]{avg:.1f}[/bold cyan]    "
+        f"Best: [bold green]{best}[/bold green]    "
+        f"Worst: [bold red]{worst}[/bold red]\n"
+    )
+
+    # Sparkline-style trend table
+    table = Table(
+        box=box.ROUNDED,
+        header_style="bold cyan",
+        title="[bold]Recent Scores[/bold] (newest first)",
+    )
+    table.add_column("Date", style="white", no_wrap=True)
+    table.add_column("Score", justify="right", style="bold")
+    table.add_column("+/-", justify="right")
+    table.add_column("Course")
+    table.add_column("", width=12)  # bar
+
+    for r in scored:
+        date = r.get("startTime", "")[:10]
+        sc = r["noOfShots"]
+        ou = r.get("overUnder")
+        ou_s = f"{ou:+d}" if ou is not None else ""
+        cname = course_map.get(r.get("courseId"), "")
+
+        # Visual bar: green below avg, red above
+        bar_len = min(abs(sc - int(avg)), 10)
+        color = "green" if sc <= avg else "red"
+        bar = f"[{color}]{'█' * bar_len}[/{color}]"
+
+        table.add_row(date, str(sc), ou_s, cname, bar)
+
+    console.print(table)
 
 
 # ---------------------------------------------------------------------------
